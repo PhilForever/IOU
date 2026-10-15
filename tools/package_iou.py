@@ -14,7 +14,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_FILES = frozenset({
     "IOU.toc", "ledger.lua", "codec.lua", "core.lua", "ui.lua",
-    "launcher.lua", "Bindings.xml",
+    "launcher.lua", "Bindings.xml", "transport.lua",
 })
 DOCUMENT_FILES = frozenset({"README.md", "CHANGELOG.md", "LICENSE"})
 PACKAGE_FILES = RUNTIME_FILES | DOCUMENT_FILES

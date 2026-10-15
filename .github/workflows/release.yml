@@ -37,7 +37,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          artifacts/IOU-*.zip artifacts/IOU-*.zip.sha256
-          --verify-tag --title "IOU $RELEASE_TAG" --notes-file CHANGELOG.md
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$RELEASE_TAG" \
+            artifacts/IOU-*.zip artifacts/IOU-*.zip.sha256 \
+            --verify-tag --title "IOU $RELEASE_TAG" --notes-file CHANGELOG.md "${flags[@]}"

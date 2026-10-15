@@ -4,6 +4,8 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
+**0.3.0-alpha.1 is an optional communication test build.** The stable personal ledger remains available as [0.2.0](https://github.com/PhilForever/IOU/releases/tag/v0.2.0). The alpha adds an opt-in two-player connection test as preparation for shared agreements; it does not yet add shared proposals or repayments.
+
 ## Install
 
 1. Download an `IOU-<version>.zip` asset from [Releases](https://github.com/PhilForever/IOU/releases), when available.
@@ -24,7 +26,7 @@ Click **+ New IOU**, choose **Owed to me** or **I owe**, and enter the player an
 | Items | 20 Linen Cloth | Enter a whole quantity and item name or link. |
 | Favor | 30 minutes of quest help | Enter quantity `30` and label `minutes of quest help`. |
 
-Include the player's realm when it helps distinguish names. Item links can be pasted or inserted by focusing the item label field and Shift-clicking an item. Notes and an optional due date provide context. Enter dates as `YYYY-MM-DD`; an agreement becomes overdue after the end of that day in the client's local time.
+Use the player's full name to distinguish characters. Item links can be pasted or inserted by focusing the item label field and Shift-clicking an item. Notes and an optional due date provide context. Enter dates as `YYYY-MM-DD`; an agreement becomes overdue after the end of that day in the client's local time.
 
 Select an agreement to view its remaining balance and history. Record a partial payment or delivery, or settle its remaining balance. A mistaken repayment can be reversed with a reason; the original event and correction stay visible.
 
@@ -49,6 +51,8 @@ Gold summaries cover gold agreements only. Item and favor quantities retain thei
 | `/iou export` | Open this character's backup text. |
 | `/iou import` | Open the backup import dialog. |
 | `/iou settings` | Open launcher, reminder, and position settings. |
+| `/iou test [full player name]` | Open the optional connection test without sending; Listen enables replies. |
+| `/iou test stop` | Stop connection-test sending and listening. |
 | `/iou minimap show` / `/iou minimap hide` | Show or hide the minimap button. |
 | `/iou reminders on` / `/iou reminders off` | Enable or disable login reminders. |
 | `/iou resetpos` | Reset the ledger window position. |
@@ -68,7 +72,11 @@ Version 0.2 exports `IOU2:` backups, accepts older `IOU1:` backups, and upgrades
 
 ## What IOU records
 
-IOU is manual personal bookkeeping. It does not detect trades, verify payments, synchronize with other players, or send agreement messages. A settled entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+IOU is manual personal bookkeeping. It does not detect trades, verify payments, synchronize ledgers, or send agreement messages. A settled entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+
+The alpha's **Settings > Connection test** sends fixed diagnostic text over logged addon whispers only while you explicitly enable it for one player. Both players need the same build, enter each other's full name, and click **Listen**; one clicks **Run test**. IOU checks ASCII, Unicode, and 239/240-byte messages automatically and creates a copyable report. Keep both windows open; closing the window, **Stop**, or a reload disables listening. See the [short connection guide](https://github.com/PhilForever/IOU/blob/main/docs/connection-test.md). Reports contain player names, so share them privately.
+
+The [Shared Agreements protocol draft](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) describes the next stages and unresolved framing work. Live two-client delivery must be established before the shared-agreement pilot.
 
 No third-party addon libraries are required. The addon is available under the [MIT license](LICENSE).
 
@@ -82,6 +90,6 @@ python tools/test_iou.py
 python tools/package_iou.py
 ```
 
-The package command validates TOC/XML dependencies and builds an installable ZIP under `artifacts/`, with a SHA-256 checksum. Only runtime files, this README, the changelog, and the license are included. CI runs the same checks on pull requests and pushes to `main`. Pushing a `v<version>` tag runs the release workflow; the tag must match `IOU.toc`.
+The package command validates TOC/XML dependencies and builds an installable ZIP under `artifacts/`, with a SHA-256 checksum. Only runtime files, this README, the changelog, and the license are included. CI runs the same checks on pull requests and pushes to `main`. Pushing a `v<version>` tag runs the release workflow; the tag must match `IOU.toc`. Hyphenated prerelease versions are marked as prereleases and do not replace the latest stable release.
 
-Automated tests exercise domain behavior, backup validation, and mocked UI interactions. They cannot establish actual rendering, event behavior, combat taint, or persistence in the client. See [Contributing](https://github.com/PhilForever/IOU/blob/main/CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md).
+Automated tests exercise domain behavior, backup validation, mocked UI interactions, and simulated two-client diagnostic traffic. They cannot establish actual rendering, event delivery, combat taint, or persistence in the client. See [Contributing](https://github.com/PhilForever/IOU/blob/main/CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md).

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0-alpha.1 — 2026-10-15
+
+- Added an opt-in **Connection test** under Settings and `/iou test`, preparing for shared agreements.
+- Automatically probes predefined ASCII and Norwegian text, plus exact 239/240-byte messages, using logged addon whispers.
+- Added a copyable diagnostic report that distinguishes API submission from an exact reply from the selected peer.
+- Restricted the listener to one explicitly selected player, bounded response traffic, and stopped it on window close, Stop, or reload.
+- Preserved personal ledger storage, backups, and existing agreement behavior.
+- Added a revised Shared Agreements protocol draft and a short two-player test guide.
+
+Validation: Lua 5.1 regressions, mocked UI checks, and a simulated two-client transport harness. Actual logged addon delivery and Forever sender naming still require the two-player [connection test](https://github.com/PhilForever/IOU/blob/main/docs/connection-test.md). This prerelease does not implement shared agreements.
+
 ## 0.2.0 — 2026-10-15
 
 - Added due dates, overdue indicators, and optional character-specific login reminders.

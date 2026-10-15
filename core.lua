@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.2.0"
+IOU.VERSION = "0.3.0-alpha.1"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -207,8 +207,13 @@ end
 
 local function slash(command)
     if not ready() then return end
-    command = (command or ""):match("^%s*(.-)%s*$"):lower()
+    local original = (command or ""):match("^%s*(.-)%s*$")
+    command = original:lower()
     if command == "" then IOU.Toggle()
+    elseif command == "test stop" then
+        IOU.Transport.Stop(); IOU.Message("Connection test stopped; listening is off.")
+    elseif command == "test" then IOU.ShowConnectionTest()
+    elseif command:match("^test%s+") then IOU.ShowConnectionTest(original:match("^%S+%s+(.+)$"))
     elseif command == "add" then IOU.ShowAdd()
     elseif command == "export" then IOU.ShowBackup("export")
     elseif command == "import" then IOU.ShowBackup("import")
@@ -222,6 +227,7 @@ local function slash(command)
     elseif command == "help" then
         IOU.Message("/iou - ledger; /iou add - new agreement; /iou export - backup; /iou import - restore.")
         IOU.Message("/iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
+        IOU.Message("/iou test [full player name] - connection test; /iou test stop - stop listening.")
     else IOU.Message("Unknown command. Use /iou help.") end
 end
 

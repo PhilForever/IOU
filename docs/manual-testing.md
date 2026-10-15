@@ -11,8 +11,11 @@ Record the addon version, client build, date, resolution, UI scale, and other ad
 | 0.1.0 | In-game user report on 15 October 2026 | Records survived `/reload` and a full game exit/restart. Basic gold/favor creation, settlement, history, and export were demonstrated. |
 | 0.1.1 | Lua 5.1 regression and mocked UI checks | Updated persistence copy; no new claim of live client verification. |
 | 0.2.0 | Lua 5.1 regression and mocked UI checks, plus package validation | Covers domain logic, backup/migration behavior, and simulated interactions. The live cases below remain to be performed for 0.2.0. |
+| 0.3.0-alpha.1 | Automated regressions, mocked UI, and simulated two-client transport | Adds an opt-in diagnostic only. Ordinary chat whispers shown by the user do not establish addon-message delivery. Live connection reports are pending. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
+
+For the alpha, follow the [connection test guide](connection-test.md). Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Capture both private reports, including failures. Verify closing the window or using `/iou test stop` stops traffic, and that listening is off after reload. Personal records must remain unchanged.
 
 ## Live regression cases
 

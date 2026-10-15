@@ -756,10 +756,80 @@ function IOU.ShowBackup(mode)
     f.scroll:SetVerticalScroll(0); f:Show(); f.box:SetFocus(); f.box:HighlightText()
 end
 
+local function refreshConnection()
+    local f, transport = UI.connection, IOU.Transport
+    if not f then return end
+    local listening = transport.IsListening()
+    f.status:SetText(literal(f.problem or transport.GetStatus()))
+    f.listen:SetEnabled(not listening)
+    f.run:SetEnabled(listening and not transport.IsRunning())
+    f.stop:SetEnabled(listening)
+    f.peer:SetEnabled(not listening)
+    f.target:SetEnabled(not listening)
+    if not f.box:HasFocus() then f.box:SetText(transport.GetReport()) end
+end
+
+function IOU.ShowConnectionTest(peer)
+    if not IOU.Initialize() then return end
+    local transport = IOU.Transport
+    transport.Initialize()
+    if not UI.connection then
+        local f = window("IOUConnectionWindow", 720, 610)
+        UI.connection = f
+        font(f, 21, 22, -22, 660, "Connection test", GOLD)
+        font(f, 12, 24, -64, 660, "Both players open this window, enter each other's full name and click Listen.\nOne clicks Run test. Keep both windows open until it finishes.\nIOU checks text and byte sizes automatically; your ledger stays unchanged.", MUTED)
+        f.identity = font(f, 12, 24, -126, 660, "", GOLD)
+        font(f, 11, 24, -153, 660, "Other player's full name (first name and surname)", MUTED)
+        f.peer = edit(f, 488, 28, -173, 96)
+        f.target = button(f, "Use target", 144, 548, -173, function()
+            local name, err = transport.GetUnitName("target")
+            f.problem = err
+            if name then f.peer:SetText(name) end
+            refreshConnection()
+        end)
+        f.listen = button(f, "Listen", 144, 24, -218, function()
+            f.peer:ClearFocus(); f.box:ClearFocus(); f.problem = nil
+            local ok, err = transport.EnableListening(true, f.peer:GetText())
+            if not ok then f.problem = err end
+            refreshConnection()
+        end)
+        f.run = button(f, "Run test", 144, 182, -218, function()
+            f.box:ClearFocus(); f.problem = nil
+            local ok, err = transport.Start(f.peer:GetText())
+            if not ok then f.problem = err end
+            refreshConnection()
+        end)
+        f.stop = button(f, "Stop", 144, 340, -218, function()
+            f.box:ClearFocus(); f.problem = nil
+            transport.Stop(); refreshConnection()
+        end)
+        f.status = font(f, 12, 24, -262, 660, "", GOLD)
+        f.status:SetHeight(46)
+        f.box, f.shell, f.scroll = multiline(f, 648, 224, 31, -321, 16000)
+        f.peer:SetScript("OnEscapePressed", function() f:Hide() end)
+        f.box:SetScript("OnEscapePressed", function() f:Hide() end)
+        f.copy = button(f, "Copy report", 164, 24, -566, function()
+            f.box:SetText(transport.GetReport()); f.scroll:SetVerticalScroll(0)
+            f.box:SetFocus(); f.box:HighlightText()
+        end)
+        font(f, 11, 204, -572, 480, "Press Ctrl+C after Copy report. Reports include player names.", MUTED)
+        f:SetScript("OnHide", function()
+            f.box:ClearFocus(); f.peer:ClearFocus(); f.problem = nil
+            transport.Stop()
+        end)
+        IOU.OnTransportChanged = refreshConnection
+    end
+    local f = UI.connection
+    if peer and not transport.IsListening() then f.peer:SetText(peer) end
+    f.identity:SetText("You: " .. literal(transport.GetLocalName() or "name unavailable"))
+    refreshConnection()
+    f:Show()
+end
+
 function IOU.ShowSettings()
     showMain()
     if not UI.settings then
-        local f = window("IOUSettingsWindow", 476, 310)
+        local f = window("IOUSettingsWindow", 476, 358)
         UI.settings = f
         font(f, 21, 22, -22, 410, "IOU settings", GOLD)
         font(f, 11, 24, -63, 420, "These preferences apply across your characters.", MUTED)
@@ -770,8 +840,11 @@ function IOU.ShowSettings()
             IOU.GetSettings().reminders = not IOU.GetSettings().reminders; IOU.ShowSettings()
         end)
         button(f, "Reset window position", 260, 24, -181, function() IOU.ResetPosition() end)
-        font(f, 11, 24, -232, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour agreements remain separate for each character.", MUTED)
-        font(f, 10, 24, -281, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
+        button(f, "Connection test", 260, 24, -223, function()
+            f:Hide(); IOU.ShowConnectionTest()
+        end)
+        font(f, 11, 24, -274, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour agreements remain separate for each character.", MUTED)
+        font(f, 10, 24, -329, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
     end
     local f = UI.settings
     f.minimap:SetText("Minimap button: " .. (IOU.GetSettings().minimap and "shown" or "hidden"))

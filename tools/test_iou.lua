@@ -677,7 +677,8 @@ end)
 
 local function coreSession(config)
     config=config or {}
-    local state={frames={},objects={},messages={},now=1000,hooks={},chatCalls=0}
+    local state={frames={},objects={},messages={},now=1000,hooks={},chatCalls=0,
+        transportSent={}}
     local env={}
     for key, value in pairs(_G) do env[key]=value end
     env._G=env; env.SlashCmdList={}; env.IOUDB=config.db
@@ -687,6 +688,25 @@ local function coreSession(config)
     env.GetRealmName=function() return "Fallback Realm" end
     env.issecretvalue=function(value) return value==config.secret and config.secret~=nil end
     env.time=function(value) return value and os.time(value) or state.now end
+    env.GetTime=function() return state.now end
+    if config.connection then
+        env.NameUtil={GetUnmodifiedUnitFullName=function(unit)
+            if unit=="player" then return config.fullName or "Testplayer Surname" end
+            if unit=="target" then return config.target end
+        end}
+        env.UnitIsPlayer=function(unit) return unit=="player" or (unit=="target" and config.target~=nil) end
+        if not config.noConnectionAPI then env.C_ChatInfo={
+            RegisterAddonMessagePrefix=function() return 0 end,
+            AreOutgoingAddonChatMessagesRestricted=function() return false end,
+            InChatMessagingLockdown=function() return false end,
+            SendAddonMessageLogged=function(prefix,wire,channel,target)
+                state.transportSent[#state.transportSent+1]={prefix=prefix,wire=wire,
+                    channel=channel,target=target,at=state.now}
+                return 0
+            end,
+        } end
+        env.SendChatMessage=function() error("connection UI must not send ordinary chat") end
+    end
     env.print=function(message) state.messages[#state.messages+1]=message end
     local methods={}
     local function object(kind,parent)
@@ -701,7 +721,7 @@ local function coreSession(config)
         "SetMaxLetters","SetNumeric","SetMultiLine","SetFontObject","SetTextInsets",
         "SetFrameStrata","SetFrameLevel","SetMovable","SetClampedToScreen",
         "EnableMouse","RegisterForDrag","StartMoving","StopMovingOrSizing",
-        "SetAllPoints","HighlightText","SetMaxLines","SetWordWrap","SetMaxBytes"}
+        "SetAllPoints","SetMaxLines","SetWordWrap","SetMaxBytes"}
     for _, name in ipairs(noop) do methods[name]=function() end end
     function methods:SetPoint(...) self.point={...} end
     function methods:GetPoint() return unpack(self.point or {"CENTER",env.UIParent,"CENTER",0,0}) end
@@ -731,7 +751,11 @@ local function coreSession(config)
         self.shown=true
         if self.scripts.OnShow then self.scripts.OnShow(self) end
     end
-    function methods:Hide() self.shown=false end
+    function methods:Hide()
+        local wasShown=self.shown
+        self.shown=false
+        if wasShown and self.scripts.OnHide then self.scripts.OnHide(self) end
+    end
     function methods:SetShown(value) if value then self:Show() else self:Hide() end end
     function methods:IsShown() return self.shown end
     function methods:GetFrameLevel() return 1 end
@@ -752,6 +776,7 @@ local function coreSession(config)
         if self.scripts.OnEditFocusLost then self.scripts.OnEditFocusLost(self) end
     end
     function methods:HasFocus() return self.focus==true end
+    function methods:HighlightText() self.highlighted=true end
     function methods:SetScrollChild(child) self.scrollChild=child end
     function methods:GetVerticalScroll() return self.verticalScroll end
     function methods:SetVerticalScroll(value) self.verticalScroll=value end
@@ -804,7 +829,7 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","core.lua"}) do
+    for _, name in ipairs({"ledger.lua","codec.lua","core.lua","transport.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
     end
@@ -831,6 +856,14 @@ local function coreSession(config)
         assert(button.enabled and button.shown,"button disabled or hidden")
         assert(button.scripts.OnClick,"button has no click handler")
         return button.scripts.OnClick(button,mouse)
+    end
+    state.advance=function(seconds)
+        for _=1,math.ceil(seconds*10) do
+            state.now=state.now+0.1
+            for _, frame in ipairs(state.frames) do
+                if frame.scripts.OnUpdate then frame.scripts.OnUpdate(frame,0.1) end
+            end
+        end
     end
     return state
 end
@@ -1469,6 +1502,99 @@ test("editing an existing item captures links before native chat without opening
     form.reason:SetText("Specify the item"); state.click(form.save)
     equal(api.GetLedger().entries[e.id].label,link)
     equal(api.GetLedger().entries[e.id].events[1].before.label,"Cloth")
+end)
+
+test("connection UI and slash prefill preserve UTF-8 names and require explicit Listen then Run", function()
+    local state=coreSession({ui=true,connection=true})
+    local api=state.api
+    assert(api.Initialize())
+    assert(api.Add({player="Ledger Peer",direction="owed",kind="money",amount=123,label="",note="Private ledger note"}))
+    local before=copy(state.env.IOUDB)
+    local peer="Bj\195\184Rn \195\152Rn"
+    state.env.SlashCmdList.IOU("  TEST "..peer.."  ")
+    local form=api.UI.connection
+    assert(form:IsShown()); equal(form.peer:GetText(),peer)
+    equal(#state.transportSent,0); assert(not api.Transport.IsListening())
+    assert(form.listen.enabled and not form.run.enabled and not form.stop.enabled)
+    state.click(form.listen)
+    assert(api.Transport.IsListening()); equal(#state.transportSent,0)
+    assert(not form.listen.enabled and form.run.enabled and form.stop.enabled)
+    assert(not form.peer.enabled and not form.target.enabled)
+    state.click(form.run); equal(#state.transportSent,1)
+    assert(not form.run.enabled,"running connection test allowed a duplicate start")
+    state.advance(5); equal(#state.transportSent,4)
+    for _,packet in ipairs(state.transportSent) do
+        equal(packet.target,peer); equal(packet.channel,"WHISPER")
+        equal(packet.prefix,api.Transport.PREFIX)
+        assert(api.Transport.Parse(packet.wire)); assert(#packet.wire<=240)
+    end
+    assert(same(state.env.IOUDB,before),"connection controls changed saved ledger")
+    assert(not api.Transport.GetReport():find("Private ledger note",1,true))
+    form:Hide(); assert(not api.Transport.IsListening())
+end)
+
+test("connection report copy keeps selected text stable and closing the window cancels traffic", function()
+    local state=coreSession({ui=true,connection=true})
+    local api=state.api
+    api.ShowConnectionTest("Peer Surname")
+    local form=api.UI.connection
+    state.click(form.listen); state.click(form.run)
+    state.click(form.copy)
+    assert(form.box:HasFocus() and form.box.highlighted)
+    assert(form.box:GetText():find("IOU LINK TEST",1,true))
+    equal(form.scroll:GetVerticalScroll(),0)
+    form.box:SetText("Selected report text")
+    state.advance(5)
+    equal(form.box:GetText(),"Selected report text","refresh replaced the selected copy buffer")
+    state.click(form.copy)
+    assert(form.box:GetText():find("4. 240-byte UTF-8",1,true))
+    form.box.scripts.OnEscapePressed(form.box)
+    assert(not form:IsShown(),"Escape while copying left the listener active")
+    assert(not form.box:HasFocus() and not form.peer:HasFocus())
+    assert(not api.Transport.IsListening())
+    local count=#state.transportSent
+    state.advance(60); equal(#state.transportSent,count)
+    for _,frame in ipairs(state.frames) do
+        assert(not frame.scripts.OnUpdate,"closing the test left an active frame driver")
+    end
+    api.ShowConnectionTest(); equal(#state.transportSent,count)
+    assert(not form.run.enabled and form.listen.enabled)
+    form.peer:SetFocus(); state.click(form.listen)
+    form.peer.scripts.OnEscapePressed(form.peer)
+    assert(not form:IsShown() and not api.Transport.IsListening())
+end)
+
+test("connection target helper and slash Stop remain explicit and preserve the live ledger", function()
+    local target="N\195\179ra Star"
+    local state=coreSession({ui=true,connection=true,target=target})
+    local api=state.api
+    assert(api.Initialize()); local before=copy(state.env.IOUDB)
+    api.ShowSettings()
+    state.click(state.button(api.UI.settings,"Connection test"))
+    local form=api.UI.connection
+    assert(form:IsShown()); assert(not api.UI.settings:IsShown())
+    state.click(form.target); equal(form.peer:GetText(),target)
+    equal(#state.transportSent,0)
+    state.click(form.listen); equal(#state.transportSent,0)
+    state.env.SlashCmdList.IOU("test stop")
+    assert(not api.Transport.IsListening()); assert(not form.run.enabled)
+    equal(#state.transportSent,0)
+    assert(same(state.env.IOUDB,before))
+end)
+
+test("connection UI handles unavailable APIs without preventing normal ledger actions", function()
+    local state=coreSession({ui=true,connection=true,noConnectionAPI=true})
+    local api=state.api
+    api.ShowConnectionTest("Peer Surname")
+    local form=api.UI.connection
+    state.click(form.listen)
+    assert(not api.Transport.IsListening() and not form.run.enabled)
+    assert(form.status:GetText():find("logged addon",1,true))
+    assert(form.box:GetText():find("Local preflight",1,true))
+    equal(#state.transportSent,0)
+    form:Hide()
+    assert(api.Add({player="Ledger Peer",direction="owed",kind="money",amount=100,label="",note=""}))
+    equal(#api.GetLedger().entries,1)
 end)
 
 return results

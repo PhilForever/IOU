@@ -1,4 +1,4 @@
-"""Lua 5.1 domain and isolated mocked-UI checks for the IOU addon.
+"""Lua 5.1 domain, isolated mocked-UI and two-client transport checks.
 
 Run with Python and lupa 2.8. An optional tools/vendor installation is supported.
 Only IOU source and this harness are executed. Real client compatibility and
@@ -40,8 +40,9 @@ def main() -> int:
     files = sorted(addon.glob("*.lua"))
     if not files:
         raise RuntimeError(f"No IOU Lua files found in {addon}")
-    harness = ROOT / "tools" / "test_iou.lua"
-    for path in [*files, harness]:
+    harnesses = [ROOT / "tools" / name for name in
+                 ("test_iou.lua", "test_transport.lua")]
+    for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
         {path.name: path.read_text(encoding="utf-8-sig") for path in files}
@@ -58,11 +59,16 @@ def main() -> int:
         compile_only(body, "@Bindings.xml:" + name)
         bindings[name] = body
     lua.globals().IOU_BINDINGS = lua.table_from(bindings)
-    results = lua.execute(harness.read_text(encoding="utf-8-sig"))
-    for name in results.values():
-        print("PASS", name)
-    print(f"Lua 5.1 syntax: {len(files)} addon files plus test harness.")
-    print(f"Checks: {len(results)} passed.")
+    counts = []
+    for harness in harnesses:
+        results = lua.execute(harness.read_text(encoding="utf-8-sig"))
+        counts.append(len(results))
+        for name in results.values():
+            print("PASS", name)
+    print(f"Lua 5.1 syntax: {len(files)} addon files plus {len(harnesses)} test harnesses.")
+    print(f"Ledger/UI checks: {counts[0]} passed.")
+    print(f"Transport checks: {counts[1]} passed.")
+    print(f"Checks: {sum(counts)} passed.")
     print("Limit: mocks cannot validate the actual WoW client, taint, rendering, "
           "event delivery, or SavedVariables persistence across relogs.")
     return 0
