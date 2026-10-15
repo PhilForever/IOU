@@ -2,14 +2,17 @@
 ## Title: IOU
 ## Notes: Your personal debt and favor ledger for Azeroth.
 ## Author: PhilForever
-## Version: 0.3.0-alpha.1
+## Version: 0.3.0-alpha.2
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## X-Website: https://github.com/PhilForever/IOU
+## X-Curse-Project-ID: 1746575
 ## X-License: MIT
 ## SavedVariables: IOUDB
 
 ledger.lua
 codec.lua
+shared_codec.lua
+shared.lua
 core.lua
 transport.lua
 ui.lua

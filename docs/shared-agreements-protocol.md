@@ -1,8 +1,8 @@
 # Shared Agreements: protocol draft
 
-**DRAFT for the 0.3 development cycle. Not implemented by the connection-test build.**
+**DRAFT for the 0.3 development cycle. Version 0.3.0-alpha.2 implements the offline state and codec foundation only.**
 
-This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The immediate deliverable is the [connection test](connection-test.md); shared agreements require a separate implementation, simulation, and two-player pilot.
+This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The codec and state engine can simulate proposals, explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. See the [development API](shared-development.md). They do not send messages or save shared records. Live transport and packet framing, persistence integration, consent UI, and the two-player pilot remain future work. The optional [connection test](connection-test.md) remains available when live delivery testing resumes.
 
 ## Scope and trust
 
@@ -40,22 +40,23 @@ Canonical terms contain these fields, in this order:
 
 | Field | Rule |
 | --- | --- |
+| `protocol` | Integer `1`, serialized first. |
 | `kind` | Literal `GOLD_OBLIGATION`. |
 | `proposer`, `recipient` | Both bound participant identifiers. |
 | `debtor`, `creditor` | Exactly the two participants, distinct; direction is explicit. |
 | `amountCopper` | Positive bounded integer; decimal ASCII, no sign, fraction, exponent, or leading zero. |
-| `dueUTC` | Empty, or a validated UTC Unix timestamp in canonical integer form. |
+| `dueUTC` | Integer `0` means no deadline; otherwise a validated UTC Unix timestamp in canonical integer form. |
 | `note` | Valid UTF-8 plain text, within a defined byte limit; no control bytes or WoW formatting escapes. |
 
-Serialize fields as UTF-8 byte-length-prefixed text in fixed order: `length:value`. Reject noncanonical lengths, trailing data, malformed UTF-8, missing fields, and extra fields. Keep the exact canonical bytes; never regenerate accepted terms through display formatting. The review UI uses those parsed bytes, showing both full names, direction, amount, note, and due time before consent.
+The implemented canonical terms format starts with `IOUST1:` and serializes those fields in fixed order as comma-terminated UTF-8 netstrings: `length:value,`. Lengths count bytes. The logical message format uses `IOUSM1:` with the same netstring convention. Reject noncanonical lengths, trailing data, malformed UTF-8, missing fields, and extra fields. Keep the exact canonical bytes; never regenerate accepted terms through display formatting. The future review UI must use those parsed bytes, showing both full names, direction, amount, note, and due time before consent.
 
 A user-selected due day means **23:59:59 UTC on that day**, explicitly labeled in review. Local-time displays also show the UTC value. Existing personal due dates retain their existing local-day meaning; they must not be silently converted to shared dates.
 
-Use locally collision-checked IDs with a session nonce and monotonic counter. They are identifiers, not secrets. Store a fingerprint and byte length for diagnostics, but an acceptance binds exact canonical term bytes. Same ID with different bytes is a conflict even if fingerprints match.
+The offline API requires caller-supplied agreement and offer IDs, rejects any reuse in its store, and generates message and semantic IDs from a local monotonic counter. Incoming IDs are scoped to the exact peer and offer; they are identifiers, not secrets. The future live caller must generate collision-resistant agreement/offer IDs with a session nonce. Acceptance binds exact canonical term bytes; fingerprints can be added for diagnostics but cannot replace exact comparison. Same offer ID with different bytes is a rejected conflict.
 
 ## Logical message schema
 
-This table defines semantics, not final packet syntax. Every message includes version, type, message ID, agreement ID, offer ID, and revision. A retry reuses its original ID and immutable content.
+This table defines logical semantics, not final packet syntax. The implemented common fields are `version=1`, `kind`, `messageId`, `agreementId`, `offerId`, `revision=1`, and `terms` containing exact canonical terms bytes. A retry reuses its original ID and immutable content.
 
 | Type | Direction | Additional binding and effect |
 | --- | --- | --- |
@@ -64,9 +65,9 @@ This table defines semantics, not final packet syntax. Every message includes ve
 | `COMMIT` | A to B | Acceptance ID, commit ID, exact terms. Created once from A's still-open offer and a valid acceptance. |
 | `ACK` | B to A | Matching acceptance ID, commit ID, and term binding. Confirms B processed that commit. |
 | `DECLINE` | B to A | Exact offer/term binding; valid only before B accepts. Requests terminal decline. |
-| `WITHDRAW` | A to B | Exact offer/term binding and outcome ID. A has withdrawn before committing. |
+| `WITHDRAW` | A to B | `outcomeId`; withdrawal is implicit. A has withdrawn before committing. |
 | `OUTCOME` | A to B | Recorded `DECLINED` or `WITHDRAWN` outcome and ID; or the original `COMMIT` when already committed. |
-| `STATUS` | Either way | Bounded request/reply with known identifiers and terminal outcome summary; never grants consent. |
+| `STATUS` | Either way | Common fields only: requests the current retained response for a known offer. The reply reuses that proposal, acceptance, commit, acknowledgment, or terminal outcome; never grants consent. |
 
 All term-bearing messages must compare the full canonical term bytes. Control messages must resolve their binding against the locally retained exact terms; a fingerprint alone cannot introduce or replace terms. Unknown control messages cannot create accepted records. Exact framing, field limits, and readable handling of terms exceeding one packet are required implementation prerequisites.
 
@@ -97,7 +98,7 @@ Store the semantic state separately from delivery progress:
 | A | `OFFER_OPEN` | Local Withdraw enters `WITHDRAWN`; new ACCEPT is rejected with that outcome. |
 | B | `OFFER_RECEIVED` | Explicit Decline enters `DECLINE_PENDING`; terminal outcome makes it `DECLINED`. |
 | A | `OFFER_OPEN` | Valid DECLINE enters `DECLINED`; return recorded outcome. |
-| Either | Any incompatible retained state/content | Enter `NEEDS_REVIEW`; preserve both records for inspection. |
+| Either | Incompatible retained state/content | Reject with an error and leave the input store untouched; explicit reconciliation remains future work. |
 
 A's local reducer serializes new ACCEPT, DECLINE, and local Withdraw. Whichever valid terminal decision it processes first wins. If A committed first, Withdraw is refused and later DECLINE receives the original COMMIT. If withdrawal or decline won first, a later ACCEPT receives the terminal outcome. B cannot unilaterally undo an ACCEPT while waiting; any cancellation of a committed agreement is a future shared process.
 
@@ -111,13 +112,13 @@ Update the local state, consent evidence, history, deduplication response, and o
 
 On startup, pause all uncommitted handshakes. Reopening one requires explicit review and a fresh offer ID with fresh acceptance; old messages cannot automatically recommit it. A retained committed record may replay its recorded COMMIT/ACK only if its local terms and consent evidence survived. Keep old offer tombstones so delayed traffic resolves to a stale or recorded terminal result.
 
-If a crash rolls either side back behind known peer state, preserve the mismatch as `NEEDS_REVIEW`. Never reconstruct missing local consent from a peer's COMMIT, STATUS, claimed acceptance, or exported log. Reconfirmation creates a new offer after showing what each side reports; it must not create a second counted obligation beside an unresolved one.
+If a crash rolls either side back behind known peer state, never reconstruct missing local consent from a peer's COMMIT, STATUS, claimed acceptance, or exported log. The implemented engine rejects incompatible input without changing its store. A future explicit reconciliation workflow must retain and explain the mismatch before reconfirming. It must not create a second counted obligation beside an unresolved one. The foundation has no automatic merge or persisted `NEEDS_REVIEW` transition.
 
 The future shared backup format must include local-role and consent evidence and be explicitly separate from personal `IOU1`/`IOU2` exports. Any shared import or restored snapshot pauses all shared queues and enters manual reconciliation, including previously committed records. Do not resume network actions automatically from a backup.
 
 ## Storage, limits, and integration
 
-Use a separate versioned `IOUDB.sharedByCharacter[localCharacterKey]` store. Preserve the existing personal schema and exports. Validate all loaded keys and shapes before use; network IDs are opaque lookup keys, never Lua paths or table field selectors. Do not import network objects directly into database tables or allow unknown keys to overwrite local metadata.
+Planned persistence must use a separate versioned `IOUDB.sharedByCharacter[localCharacterKey]` store. The current engine creates a plain character-scoped table without reading or writing `IOUDB`. Preserve the existing personal schema and exports. Validate all loaded keys and shapes before use; network IDs are opaque lookup keys, never Lua paths or table field selectors. Do not import network objects directly into database tables or allow unknown keys to overwrite local metadata.
 
 Keep immutable terms, local role, explicit local consent evidence, acceptance/commit/outcome records, append-only history, bounded processed-message responses, tombstones, and a bounded outbox. Storage and UI identifiers must distinguish `personal:<id>` from `shared:<id>`; shared counters do not allocate personal ledger IDs.
 

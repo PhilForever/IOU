@@ -1,4 +1,4 @@
-"""Lua 5.1 domain, isolated mocked-UI and two-client transport checks.
+"""Lua 5.1 ledger/UI, transport and offline shared agreement checks.
 
 Run with Python and lupa 2.8. An optional tools/vendor installation is supported.
 Only IOU source and this harness are executed. Real client compatibility and
@@ -41,7 +41,7 @@ def main() -> int:
     if not files:
         raise RuntimeError(f"No IOU Lua files found in {addon}")
     harnesses = [ROOT / "tools" / name for name in
-                 ("test_iou.lua", "test_transport.lua")]
+                 ("test_iou.lua", "test_transport.lua", "test_shared.lua")]
     for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
@@ -66,8 +66,9 @@ def main() -> int:
         for name in results.values():
             print("PASS", name)
     print(f"Lua 5.1 syntax: {len(files)} addon files plus {len(harnesses)} test harnesses.")
-    print(f"Ledger/UI checks: {counts[0]} passed.")
-    print(f"Transport checks: {counts[1]} passed.")
+    for label, count in zip(("Ledger/UI", "Transport", "Shared agreement"), counts,
+                            strict=True):
+        print(f"{label} checks: {count} passed.")
     print(f"Checks: {sum(counts)} passed.")
     print("Limit: mocks cannot validate the actual WoW client, taint, rendering, "
           "event delivery, or SavedVariables persistence across relogs.")

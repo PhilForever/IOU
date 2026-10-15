@@ -4,7 +4,9 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.3.0-alpha.1 is an optional communication test build.** The stable personal ledger remains available as [0.2.0](https://github.com/PhilForever/IOU/releases/tag/v0.2.0). The alpha adds an opt-in two-player connection test as preparation for shared agreements; it does not yet add shared proposals or repayments.
+**0.3.0-alpha.2 adds the offline shared-agreement foundation.** The stable personal ledger remains available as [0.2.0](https://github.com/PhilForever/IOU/releases/tag/v0.2.0). The alpha includes a strict protocol engine and codec, verified with deterministic two-peer simulations, plus the optional connection test. Shared proposals, saved shared records, and a consent UI are still under development; personal bookkeeping works as before.
+
+Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
 ## Install
 
@@ -76,7 +78,7 @@ IOU is manual personal bookkeeping. It does not detect trades, verify payments, 
 
 The alpha's **Settings > Connection test** sends fixed diagnostic text over logged addon whispers only while you explicitly enable it for one player. Both players need the same build, enter each other's full name, and click **Listen**; one clicks **Run test**. IOU checks ASCII, Unicode, and 239/240-byte messages automatically and creates a copyable report. Keep both windows open; closing the window, **Stop**, or a reload disables listening. See the [short connection guide](https://github.com/PhilForever/IOU/blob/main/docs/connection-test.md). Reports contain player names, so share them privately.
 
-The [Shared Agreements protocol draft](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) describes the next stages and unresolved framing work. Live two-client delivery must be established before the shared-agreement pilot.
+The [Shared Agreements protocol draft](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) and [development guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-development.md) describe the implemented offline engine and the next integration stages. Offline development continues independently of live transport testing; live two-client delivery remains unverified and is required before calling the player-facing shared pilot verified.
 
 No third-party addon libraries are required. The addon is available under the [MIT license](LICENSE).
 
@@ -87,9 +89,10 @@ Python 3.12 and Lupa run the Lua 5.1 regression harness:
 ```sh
 python -m pip install -r requirements-dev.txt
 python tools/test_iou.py
+python tools/test_curseforge.py
 python tools/package_iou.py
 ```
 
-The package command validates TOC/XML dependencies and builds an installable ZIP under `artifacts/`, with a SHA-256 checksum. Only runtime files, this README, the changelog, and the license are included. CI runs the same checks on pull requests and pushes to `main`. Pushing a `v<version>` tag runs the release workflow; the tag must match `IOU.toc`. Hyphenated prerelease versions are marked as prereleases and do not replace the latest stable release.
+The package command validates TOC/XML dependencies and builds an installable ZIP under `artifacts/`, with a SHA-256 checksum. Only runtime files, this README, the changelog, and the license are included. CI runs the same checks on pull requests and pushes to `main`. Pushing a `v<version>` tag runs the release workflow; the tag must match `IOU.toc`. The verified ZIP is published to GitHub and CurseForge. Hyphenated prerelease versions are marked as prereleases and do not replace the latest stable release. See [Publishing](https://github.com/PhilForever/IOU/blob/main/docs/publishing.md) for configuration and backfilling existing tags.
 
 Automated tests exercise domain behavior, backup validation, mocked UI interactions, and simulated two-client diagnostic traffic. They cannot establish actual rendering, event delivery, combat taint, or persistence in the client. See [Contributing](https://github.com/PhilForever/IOU/blob/main/CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md).

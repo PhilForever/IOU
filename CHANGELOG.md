@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0-alpha.2 — 2026-10-15
+
+- Added the offline shared-agreement engine: explicit proposal, acceptance, commit, acknowledgment, decline, withdrawal, status, and exact retry handling.
+- Added a strict plain-text logical codec with exact canonical term binding and validated Unicode, names, amounts, identifiers, and UTC dates.
+- Separated agreement state from delivery evidence; missing acknowledgments do not cancel agreements, and missing local acceptance cannot be reconstructed from incoming messages.
+- Added bounded immutable stores, duplicate handling, paused recovery, and simulations of dropped/reordered messages, changed terms, withdrawal races, and missing consent.
+- Added automated CurseForge publishing using the configured Actions secret and project 1746575, with archive integrity checks and upload receipts.
+- Preserved personal ledgers and existing UI. The shared foundation does not yet send proposals, persist shared records, or expose a player consent UI.
+
+Validation: Lua 5.1 regressions and deterministic two-peer simulations, plus publisher integrity/retry checks. Live addon-message testing remains pending; development of the offline foundation does not depend on that test. Framing, saved shared storage, and the opt-in consent UI are the next integration stage.
+
 ## 0.3.0-alpha.1 — 2026-10-15
 
 - Added an opt-in **Connection test** under Settings and `/iou test`, preparing for shared agreements.
