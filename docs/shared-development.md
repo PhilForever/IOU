@@ -1,8 +1,8 @@
-# Offline Shared Agreements foundation
+# Shared Agreements development
 
-Version **0.3.0-alpha.2** adds `IOU.SharedCodec` and `IOU.Shared`. These modules model a gold agreement between two characters and simulate the acceptance protocol. They perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
+Version **0.3.0-alpha.2** introduced `IOU.SharedCodec` and `IOU.Shared`. These pure modules model a gold agreement between two characters. They perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps. **0.3.0-alpha.3** adds the wire, persistence service, and experimental consent UI around them.
 
-The personal ledger remains separate. There is no shared agreement creation or acceptance UI in this build. The [protocol draft](shared-agreements-protocol.md) describes the later live implementation.
+The personal ledger remains separate. See the [player guide](shared-agreements.md) for the current experimental UI and the [protocol specification](shared-agreements-protocol.md) for invariants and remaining work. Live client behavior remains unverified.
 
 ## State API
 
@@ -27,7 +27,7 @@ Stores hold at most **32 retained offers**. Reaching capacity rejects new work w
 
 Offer states are `OFFER_OPEN`, `OFFER_RECEIVED`, `ACCEPT_PENDING`, `DECLINE_PENDING`, `COMMITTED`, `DECLINED`, `WITHDRAWN`, and `PAUSED`. Delivery progress is a separate field. An acknowledgment tells the proposer that the recipient processed its commit; it does not establish that money changed hands.
 
-On any future reload or restore integration, call `Pause` before allowing shared work to resume. Paused offers cannot automatically retry or accept. Fresh agreement and offer IDs require fresh explicit review; a future reconciliation UI must prevent unresolved copies from being counted twice. A peer message never restores missing local consent.
+The service calls `Pause` on startup and disconnect before allowing shared work to resume. Paused offers cannot automatically retry or accept. Local reviewed-offer tombstones preserve old evidence, and unresolved paused offers block replacements with the same peer. A peer message never restores missing local consent. Shared backup/import remains unimplemented.
 
 ## Codec API
 
@@ -42,7 +42,19 @@ On any future reload or restore integration, call `Pause` before allowing shared
 
 Terms have exactly `protocol=1`, `kind="GOLD_OBLIGATION"`, `proposer`, `recipient`, `debtor`, `creditor`, `amountCopper`, `dueUTC`, and `note`. The debtor and creditor are the two distinct exact participants. `dueUTC=0` means no deadline; other supported values are UTC Unix timestamps. Names and notes must be valid plain UTF-8. The codec rejects extra fields, control text, malformed UTF-8, fractional money, and noncanonical encodings.
 
-The readable netstring formats start with `IOUST1:` for terms and `IOUSM1:` for logical messages, using comma-terminated `length:value,` fields. Logical data is bounded to 4096 bytes; names to 96 bytes and notes to 512 bytes. **This is not the 240-byte logged-whisper packet format.** Packet framing and reassembly remain separate future work.
+The readable netstring formats start with `IOUST1:` for terms and `IOUSM1:` for logical messages, using comma-terminated `length:value,` fields. Logical data is bounded to 4096 bytes; names to 96 bytes and notes to 512 bytes. `SharedWire` frames that logical text into separate packets of at most 240 bytes without splitting UTF-8 codepoints.
+
+## Wire and service
+
+`SharedWire.Enable(peer, receiver)` explicitly enables one exact full name; `Disable()` clears pending packets and incomplete transfers. `CanQueue(actions)` validates capacity without sending, and `Send(actions)` only enqueues. A driver sends at most one packet per second through `SendAddonMessageLogged`/`WHISPER` and receives only the matching logged event and prefix `IOU_SHAREDv1`.
+
+Packets have readable `SW1 <transferId> <part>/<count> <totalBytes>:<text>` headers. Parts use two-digit indices. Limits are 32 parts per 4096-byte logical message, 8 incomplete plus 8 cached transfers, 32 KiB receive storage, a 45-second expiry, and 32 logical/128 packet outbound capacity. Incoming exact-peer traffic passes a 120-token bucket with two tokens replenished per second. Conflicting fragments are rejected; no partial message reaches the engine. There are no automatic retries.
+
+`SharedService` provides `Initialize`, `Enable(peer)`, `Disable`, `IsEnabled`, `GetPeer`, `GetStatus`, `List`, `GetOffer`, `GetStore`, `Propose`, `Accept`, `Decline`, `Withdraw`, `Retry`, and `ClosePaused`. Propose fields are `{peer, direction="owed"|"owe", amountCopper, dueUTC, note}`. Mutations return a detached offer snapshot or `nil,error`. An unexpected failure after saving also returns the saved offer as a third result; callers must offer Retry instead of creating another proposal.
+
+The per-character wrapper is `{version=1, store, closedPaused, nonce, counter}` under `IOUDB.sharedByCharacter[IOU.Character()]`. The existing personal key stays unchanged. Exact owner, schema, bounded timestamps, counters, engine evidence, and local review markers are validated before use. Queue capacity is checked before replacing the stored candidate; local consent is saved in memory before packets are enqueued. Native send errors cannot erase that consent.
+
+Only one peer is enabled per session; receiving a proposal never accepts it or opens a popup. The inbox permits at most four unreviewed proposals from the peer and 32 retained offers overall. Startup never enables the wire or replays a queue. Unexpected transport stops require paused recovery before reconnecting. If the wall clock is temporarily unusable, recovery stays blocked until a valid timestamp is available; no history time or consent is invented.
 
 ## Small simulation
 
@@ -86,4 +98,4 @@ python tools/test_iou.py
 
 `tools/test_shared.lua` covers the codec and two independent stores, dropped and duplicated messages, reordered terminal outcomes, spoofed roles and senders, changed terms, bounded records, and loss of local consent. It also verifies that the foundation cannot invoke network or game APIs and that input stores remain unchanged on rejection.
 
-The next implementation step is to design and test bounded framing and explicit persistence/reconciliation around this engine, then add the consent UI. Actual logged-whisper delivery and Forever sender identity remain unverified; record that live evidence separately from the offline simulations when testing resumes.
+Next work includes mutually acknowledged repayments and dedicated shared backup/reconciliation. Actual logged-whisper delivery, Forever sender identity, rendering, and client persistence remain unverified; record live evidence separately from simulations when testing resumes.

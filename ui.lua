@@ -193,6 +193,7 @@ local function buildMain()
     end)
     font(f, 31, 22, -18, 180, "IOU", GOLD)
     UI.character = font(f, 12, 24, -55, 600, "", MUTED)
+    button(f, "Shared", 94, 486, -27, function() IOU.ShowShared() end)
     button(f, "Settings", 104, 590, -27, function() IOU.ShowSettings() end)
     button(f, "Backups", 98, 704, -27, function() IOU.ShowBackup("export") end)
     button(f, "+ New IOU", 114, 812, -27, function() IOU.ShowAdd() end)
@@ -696,7 +697,7 @@ function IOU.ShowBackup(mode)
     if not UI.backup then
         local f = window("IOUBackupWindow", 736, 556)
         UI.backup = f
-        font(f, 21, 22, -21, 660, "Ledger backups", GOLD)
+        font(f, 21, 22, -21, 660, "Personal ledger backups", GOLD)
         button(f, "Before upgrade", 150, 528, -21, function()
             local previous = IOU.MigrationExport()
             if not previous then f.status:SetText("No older-format ledger was upgraded for this character."); return end
@@ -751,7 +752,7 @@ function IOU.ShowBackup(mode)
     else
         local text, err = IOU.Export()
         if not text then IOU.Message(err); return end
-        f.box:SetText(text); f.status:SetText("All IOUs and their history are included. Copy this snapshot to keep an external backup.")
+        f.box:SetText(text); f.status:SetText("Personal IOUs and their history are included. Shared agreements are saved separately and are not part of this export.")
     end
     f.scroll:SetVerticalScroll(0); f:Show(); f.box:SetFocus(); f.box:HighlightText()
 end
@@ -851,3 +852,7 @@ function IOU.ShowSettings()
     f.reminders:SetText("Login reminders: " .. (IOU.GetSettings().reminders and "on" or "off"))
     f:Show()
 end
+
+-- The shared agreement view uses the same ordinary frame styling and controls.
+UI.Helpers = {font=font, panel=panel, button=button, edit=edit, scroll=scroll,
+    window=window, literal=literal, moneyFields=moneyFields}

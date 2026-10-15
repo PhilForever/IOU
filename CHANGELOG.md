@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0-alpha.3 — 2026-10-16
+
+- Added an experimental **Shared** view and `/iou shared` for proposing, reviewing, accepting, declining, and withdrawing gold agreements.
+- Added full-term confirmation with explicit debtor/creditor, complete notes, and deadlines fixed to end of day UTC.
+- Added readable UTF-8 packet framing/reassembly over a separate logged addon whisper prefix, with peer scoping, pacing, bounded queues, expiration, and receive-rate limits.
+- Added validated shared SavedVariables per character, separate from personal balances and personal backup/import.
+- Paused interrupted offers on disconnect/reload; retained local consent and terminal history without automatic traffic on login.
+- Added explicit local review of paused offers, retained tombstones, and replacement guards to prevent silent restarts of unresolved handshakes.
+- Added UI, persistence, framing, and two-client integration simulations, including stale confirmation and queue failure cases.
+
+Validation: Lua 5.1 regressions and mocked two-client packet delivery. Actual in-game delivery, rendering, and shared-record persistence remain unverified; live testing is deferred. This remains an opt-in alpha. Shared payments and shared backup/import are future work.
+
 ## 0.3.0-alpha.2 — 2026-10-15
 
 - Added the offline shared-agreement engine: explicit proposal, acceptance, commit, acknowledgment, decline, withdrawal, status, and exact retry handling.

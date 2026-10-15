@@ -687,14 +687,16 @@ local function coreSession(config)
     end
     env.GetRealmName=function() return "Fallback Realm" end
     env.issecretvalue=function(value) return value==config.secret and config.secret~=nil end
-    env.time=function(value) return value and os.time(value) or state.now end
+    env.time=function(value) return value and os.time(value) or math.floor(state.now) end
     env.GetTime=function() return state.now end
-    if config.connection then
+    if not config.noSharedIdentity then
         env.NameUtil={GetUnmodifiedUnitFullName=function(unit)
-            if unit=="player" then return config.fullName or "Testplayer Surname" end
+            if unit=="player" then return config.fullName or ((config.name or "Testplayer").." Surname") end
             if unit=="target" then return config.target end
         end}
         env.UnitIsPlayer=function(unit) return unit=="player" or (unit=="target" and config.target~=nil) end
+    end
+    if config.connection or config.shared then
         if not config.noConnectionAPI then env.C_ChatInfo={
             RegisterAddonMessagePrefix=function() return 0 end,
             AreOutgoingAddonChatMessagesRestricted=function() return false end,
@@ -735,6 +737,8 @@ local function coreSession(config)
     function methods:SetOwner(owner,anchor) self.owner=owner; self.anchor=anchor; self.lines={} end
     function methods:AddLine(text) self.lines[#self.lines+1]=text end
     function methods:RegisterEvent(event) self.events[event]=true end
+    function methods:UnregisterEvent(event) self.events[event]=nil end
+    function methods:UnregisterAllEvents() self.events={} end
     function methods:SetScript(event, fn) self.scripts[event]=fn end
     function methods:SetSize(w,h) self.width,self.height=w,h end
     function methods:SetWidth(w) self.width=w end
@@ -829,12 +833,15 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","core.lua","transport.lua"}) do
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua",
+        "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
     end
     if config.ui then
         local chunk=assert(loadstring(assert(IOU_SOURCES["ui.lua"]),"@IOU/ui.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["shared_ui.lua"]),"@IOU/shared_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
     end
     if config.launcher then
@@ -865,7 +872,54 @@ local function coreSession(config)
             end
         end
     end
+    state.event=function(event,...)
+        for _,frame in ipairs(state.frames) do
+            if frame.events[event] and frame.scripts.OnEvent then
+                frame.scripts.OnEvent(frame,event,...)
+            end
+        end
+    end
     return state
+end
+
+local function sharedPeer(state, options)
+    options=options or {}
+    local api=state.api
+    local name=options.name or "Remote Peer"
+    local localName=assert(api.Transport.GetLocalName())
+    local peer={name=name,store=assert(api.Shared.New(name)),serial=0}
+    local terms={protocol=1,kind="GOLD_OBLIGATION",proposer=name,recipient=localName,
+        debtor=localName,creditor=name,amountCopper=12345,dueUTC=1900000000,
+        note=options.note or "Exact reviewed terms: Bj\195\184rn bl\195\165b\195\166r"}
+    local actions
+    peer.store,actions=api.Shared.Propose(peer.store,terms,"remote-agreement","remote-offer",state.now)
+    assert(peer.store,actions); peer.proposal=actions[1].message
+    function peer:deliver(message)
+        self.serial=self.serial+1
+        local packets=assert(api.SharedWire.Frame("ui-incoming-"..self.serial,
+            assert(api.SharedCodec.Encode(message))))
+        for _,packet in ipairs(packets) do
+            state.event("CHAT_MSG_ADDON_LOGGED",api.SharedWire.PREFIX,packet,"WHISPER",self.name)
+        end
+    end
+    function peer:withdraw()
+        local outgoing
+        self.store,outgoing=api.Shared.Withdraw(self.store,"remote-offer",state.now)
+        assert(self.store,outgoing); self:deliver(outgoing[1].message)
+    end
+    return peer
+end
+
+local function visibleText(state, parent)
+    local text={}
+    for _,object in ipairs(state.objects) do
+        local ancestor=object
+        while ancestor and ancestor~=parent do ancestor=ancestor.parent end
+        if ancestor==parent and object.text and object.text~="" then
+            text[#text+1]=object.text
+        end
+    end
+    return table.concat(text,"\n")
 end
 
 test("core startup keeps each character ledger separate", function()
@@ -1595,6 +1649,278 @@ test("connection UI handles unavailable APIs without preventing normal ledger ac
     form:Hide()
     assert(api.Add({player="Ledger Peer",direction="owed",kind="money",amount=100,label="",note=""}))
     equal(#api.GetLedger().entries,1)
+end)
+
+test("shared UTC due dates validate calendar days without consulting the local clock", function()
+    local state=coreSession({ui=true}); local api=state.api
+    state.env.time=function() error("UTC calendar parsing used local time") end
+    equal(api.ParseSharedDueDate(""),0)
+    equal(api.ParseSharedDueDate("  "),0)
+    equal(api.ParseSharedDueDate("1970-01-01"),86399)
+    equal(api.ParseSharedDueDate("2000-02-29"),951868799)
+    equal(api.ParseSharedDueDate("2028-02-29"),1835481599)
+    equal(api.ParseSharedDueDate("2099-12-31"),4102444799)
+    for _,value in ipairs({"1969-12-31","2100-01-01","2027-02-29",
+        "2001-02-29","2026-04-31","2026-00-01","2026-13-01","2026-01-00",
+        "2026-01-32","2026-1-01","tomorrow"}) do
+        local parsed,err=api.ParseSharedDueDate(value)
+        equal(parsed,nil); assert(type(err)=="string" and #err>0)
+    end
+end)
+
+test("shared UI requires explicit peer enablement and sends only the reviewed proposal draft", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    assert(api.Initialize())
+    assert(api.Add({player="Personal Peer",direction="owed",kind="money",amount=555,label="",note="Personal-only note"}))
+    local ledger=copy(api.GetLedger())
+    local peer="Bj\195\184Rn \195\152Rn"
+    state.env.SlashCmdList.IOU("  SHARED "..peer.."  ")
+    local board=api.UI.shared
+    assert(board:IsShown()); equal(board.peer:GetText(),peer)
+    assert(not api.SharedService.IsEnabled()); equal(#state.transportSent,0)
+    state.click(board.enable); assert(api.SharedService.IsEnabled())
+    equal(api.SharedService.GetPeer(),peer); equal(#state.transportSent,0)
+    state.click(board.propose)
+    local form=api.UI.sharedForm
+    assert(form:IsShown()); equal(form.peer:GetText(),peer); equal(form.boundPeer,peer)
+    form.money:Fill(12345); form.note:SetText("Gold for Bj\195\184rn")
+    form.due:SetText("2028-02-29"); state.click(form.dirButtons.owed)
+    equal(#state.transportSent,0); equal(#api.SharedService.List(),0)
+    state.click(form.send)
+    assert(not form:IsShown()); equal(#api.SharedService.List(),1)
+    local offer=api.SharedService.List()[1]
+    equal(offer.state,"OFFER_OPEN")
+    local terms=assert(api.SharedCodec.ParseTerms(offer.terms))
+    equal(terms.recipient,peer); equal(terms.debtor,peer)
+    equal(terms.creditor,api.Transport.GetLocalName()); equal(terms.amountCopper,12345)
+    equal(terms.note,"Gold for Bj\195\184rn"); equal(terms.dueUTC,1835481599)
+    equal(#state.transportSent,0,"service sent before persisting/enqueueing returned")
+    state.advance(20); assert(#state.transportSent>0)
+    for _,packet in ipairs(state.transportSent) do
+        equal(packet.prefix,api.SharedWire.PREFIX); equal(packet.target,peer)
+        equal(packet.channel,"WHISPER"); assert(#packet.wire<=240)
+    end
+    assert(same(api.GetLedger(),ledger),"shared proposal changed the personal ledger")
+    board:Hide()
+end)
+
+test("shared incoming fragments require full visible term review and a separate acceptance click", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    api.ShowShared("Remote Peer"); local board=api.UI.shared
+    state.click(board.enable)
+    local note=string.rep("Reviewed UTF-8 \195\184. ",20)
+    local peer=sharedPeer(state,{note=note})
+    peer:deliver(peer.proposal)
+    local offer=assert(api.SharedService.GetOffer("remote-offer"))
+    equal(offer.state,"OFFER_RECEIVED"); equal(offer.consent,"NONE")
+    equal(#state.transportSent,0); assert(board.accept.enabled)
+    state.click(board.accept)
+    local review=api.UI.sharedReview
+    assert(review:IsShown() and review.confirm.enabled)
+    equal(review.offerId,offer.offerId); equal(review.terms,offer.terms)
+    local shown=visibleText(state,review)
+    for _,value in ipairs({"Proposer: Remote Peer","Recipient: Testplayer Surname",
+        "Debtor: Testplayer Surname","Creditor: Remote Peer","1g 23s 45c",note,"UTC"}) do
+        assert(shown:find(value,1,true),"full review omitted "..value)
+    end
+    assert(review.content:GetHeight()>=review.details:GetStringHeight())
+    equal(api.SharedService.GetOffer("remote-offer").state,"OFFER_RECEIVED")
+    equal(#state.transportSent,0)
+    state.click(review.confirm)
+    assert(not review:IsShown())
+    offer=api.SharedService.GetOffer("remote-offer")
+    equal(offer.state,"ACCEPT_PENDING"); equal(offer.consent,"ACCEPT")
+    equal(#api.GetLedger().entries,0,"shared acceptance entered personal balances")
+    board:Hide()
+end)
+
+test("shared review rejects a withdrawal arriving while the acceptance dialog is open", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    api.ShowShared("Remote Peer"); state.click(api.UI.shared.enable)
+    local peer=sharedPeer(state); peer:deliver(peer.proposal)
+    state.click(api.UI.shared.accept)
+    local review=api.UI.sharedReview
+    peer:withdraw()
+    equal(api.SharedService.GetOffer("remote-offer").state,"WITHDRAWN")
+    assert(not review.confirm.enabled)
+    local before=copy(api.SharedService.GetStore())
+    review.confirm.scripts.OnClick(review.confirm)
+    assert(review.status:GetText():find("changed",1,true))
+    assert(same(api.SharedService.GetStore(),before))
+    equal(api.SharedService.GetOffer("remote-offer").messages.accept,nil)
+    equal(#state.transportSent,0)
+    api.UI.shared:Hide()
+end)
+
+test("shared draft cannot silently switch recipients when the enabled player changes", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    api.ShowShared("First Peer"); local board=api.UI.shared
+    state.click(board.enable); state.click(board.propose)
+    local form=api.UI.sharedForm
+    form.money:Fill(10000); form.note:SetText("Only for the first player")
+    state.click(board.stop); board.peer:SetText("Second Peer"); state.click(board.enable)
+    local before=copy(api.SharedService.GetStore())
+    form.send.scripts.OnClick(form.send)
+    assert(form.status:GetText():find("changed",1,true))
+    assert(same(api.SharedService.GetStore(),before)); equal(#state.transportSent,0)
+    equal(#api.SharedService.List(),0)
+    board:Hide()
+end)
+
+test("a persisted proposal with failed enqueue closes its draft and retries the same saved offer", function()
+    for _,mode in ipairs({"nil","throw"}) do
+        local state=coreSession({ui=true,shared=true}); local api=state.api
+        api.ShowShared("Remote Peer"); local board=api.UI.shared
+        state.click(board.enable); state.click(board.propose)
+        local form=api.UI.sharedForm
+        form.money:Fill(10000); form.note:SetText("Persist this proposal exactly once")
+        local originalSend=api.SharedWire.Send
+        api.SharedWire.Send=function()
+            if mode=="throw" then error("injected enqueue failure") end
+            return nil,"injected enqueue failure"
+        end
+        state.click(form.send)
+        local offers=api.SharedService.List()
+        equal(#offers,1); equal(offers[1].state,"OFFER_OPEN")
+        assert(not form:IsShown(),"saved proposal left a draft that could create a second offer")
+        equal(board.selected,offers[1].offerId)
+        assert(board.status:GetText():find("saved",1,true))
+        assert(board.status:GetText():find("Retry",1,true))
+        equal(#state.transportSent,0); assert(board.retry.enabled)
+        local originalProposal=copy(offers[1].messages.propose)
+        api.SharedWire.Send=originalSend
+        state.click(board.retry)
+        state.advance(20)
+        offers=api.SharedService.List()
+        equal(#offers,1); assert(same(offers[1].messages.propose,originalProposal))
+        assert(#state.transportSent>0); equal(#api.GetLedger().entries,0)
+        board:Hide()
+    end
+end)
+
+test("closing shared UI stops queued packets, pauses consent and keeps reload and characters isolated", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    api.ShowShared("Remote Peer"); local board=api.UI.shared
+    state.click(board.enable); state.click(board.propose)
+    local form=api.UI.sharedForm; form.money:Fill(10000); state.click(form.send)
+    local offer=api.SharedService.List()[1]
+    equal(offer.state,"OFFER_OPEN"); equal(#state.transportSent,0)
+    api.ShowSharedReview(offer.offerId,"withdraw")
+    board.peer:SetFocus(); board.peer.scripts.OnEscapePressed(board.peer)
+    assert(not board:IsShown() and not form:IsShown() and not api.UI.sharedReview:IsShown())
+    assert(not api.SharedService.IsEnabled())
+    equal(api.SharedService.GetOffer(offer.offerId).state,"PAUSED")
+    state.advance(60); equal(#state.transportSent,0)
+    for _,frame in ipairs(state.frames) do assert(not frame.scripts.OnUpdate) end
+    local saved=state.env.IOUDB
+    local reloaded=coreSession({ui=true,shared=true,db=saved})
+    reloaded.event("PLAYER_LOGIN")
+    assert(not reloaded.api.SharedService.IsEnabled())
+    equal(reloaded.api.SharedService.GetOffer(offer.offerId).state,"PAUSED")
+    reloaded.advance(60); equal(#reloaded.transportSent,0)
+    local original=copy(saved.sharedByCharacter[api.Character()])
+    local other=coreSession({ui=true,shared=true,db=saved,name="Otherplayer",fullName="Otherplayer Surname"})
+    other.event("PLAYER_LOGIN")
+    equal(#other.api.SharedService.List(),0); equal(#other.api.GetLedger().entries,0)
+    assert(same(saved.sharedByCharacter[api.Character()],original))
+    equal(#other.transportSent,0)
+end)
+
+test("corrupt shared storage is left untouched while normal personal ledger actions remain usable", function()
+    for _,corrupt in ipairs({"invalid shared namespace",{["Testplayer-TestRealm"]={version=99}}}) do
+        local db={version=1,characters={},sharedByCharacter=copy(corrupt)}
+        local before=copy(db.sharedByCharacter)
+        local state=coreSession({ui=true,shared=true,db=db}); local api=state.api
+        state.event("PLAYER_LOGIN")
+        assert(api.Initialize()); api.ShowShared("Remote Peer")
+        local store,err=api.SharedService.GetStore()
+        equal(store,nil); assert(type(err)=="string" and #err>0)
+        assert(not api.SharedService.IsEnabled()); equal(#state.transportSent,0)
+        assert(same(db.sharedByCharacter,before))
+        assert(api.Add({player="Personal Peer",direction="owed",kind="money",amount=100,label="",note=""}))
+        equal(#api.GetLedger().entries,1)
+        assert(same(db.sharedByCharacter,before))
+        api.UI.shared:Hide()
+    end
+end)
+
+test("shared paused review requires a reason and records only a local decision while disconnected", function()
+    local state=coreSession({ui=true,shared=true}); local api=state.api
+    api.ShowShared("Remote Peer"); local board=api.UI.shared
+    state.click(board.enable)
+    local peer=sharedPeer(state); peer:deliver(peer.proposal)
+    state.env.SlashCmdList.IOU("shared off")
+    assert(not api.SharedService.IsEnabled())
+    equal(api.SharedService.GetOffer("remote-offer").state,"PAUSED")
+    assert(board.closePaused.enabled)
+    state.click(board.closePaused)
+    local review=api.UI.sharedReview
+    assert(review:IsShown() and review.reason:IsShown())
+    assert(review.explanation:GetText():find("local review",1,true))
+    local before=copy(api.SharedService.GetStore())
+    state.click(review.confirm)
+    assert(review.status:GetText()~="")
+    assert(not api.SharedService.GetOffer("remote-offer").localClosed)
+    review.reason:SetText("Reconciled with the other player; use a fresh proposal")
+    state.click(review.confirm)
+    local offer=api.SharedService.GetOffer("remote-offer")
+    assert(offer.localClosed); equal(offer.state,"PAUSED")
+    assert(offer.localCloseReason:find("Reconciled",1,true))
+    assert(same(api.SharedService.GetStore(),before),"local review changed shared protocol history")
+    equal(#api.GetLedger().entries,0); equal(#state.transportSent,0)
+    assert(not board.closePaused.enabled)
+    board:Hide()
+end)
+
+test("two complete addon sessions agree through framed whispers only after recipient review", function()
+    local a=coreSession({ui=true,shared=true,name="Amber",fullName="Amber Stone"})
+    local b=coreSession({ui=true,shared=true,name="Birch",fullName="Birch Vale"})
+    a.api.ShowShared("Birch Vale"); b.api.ShowShared("Amber Stone")
+    a.click(a.api.UI.shared.enable); b.click(b.api.UI.shared.enable)
+    local personalA,personalB=copy(a.api.GetLedger()),copy(b.api.GetLedger())
+    a.click(a.api.UI.shared.propose)
+    local draft=a.api.UI.sharedForm
+    draft.money:Fill(54321); draft.note:SetText("Two-peer gold agreement \195\184")
+    a.click(draft.send)
+    local id=a.api.SharedService.List()[1].offerId
+    local deliveredA,deliveredB=0,0
+    local function deliverNew(from,to,delivered)
+        while delivered<#from.transportSent do
+            delivered=delivered+1
+            local packet=from.transportSent[delivered]
+            to.event("CHAT_MSG_ADDON_LOGGED",packet.prefix,packet.wire,packet.channel,
+                assert(from.api.Transport.GetLocalName()))
+        end
+        return delivered
+    end
+    local function runUntil(predicate)
+        for _=1,900 do
+            a.advance(0.1); b.advance(0.1)
+            deliveredA=deliverNew(a,b,deliveredA)
+            deliveredB=deliverNew(b,a,deliveredB)
+            if predicate() then return end
+        end
+        error("two-client addon simulation did not reach the expected state")
+    end
+    runUntil(function() return b.api.SharedService.GetOffer(id)~=nil end)
+    equal(b.api.SharedService.GetOffer(id).state,"OFFER_RECEIVED")
+    equal(#b.transportSent,0,"received proposal sent consent without user review")
+    b.click(b.api.UI.shared.accept)
+    equal(b.api.SharedService.GetOffer(id).state,"OFFER_RECEIVED")
+    b.click(b.api.UI.sharedReview.confirm)
+    runUntil(function()
+        local left=a.api.SharedService.GetOffer(id)
+        local right=b.api.SharedService.GetOffer(id)
+        return left and right and left.state=="COMMITTED" and right.state=="COMMITTED"
+            and left.delivery=="PEER_RECEIPT_OBSERVED"
+    end)
+    equal(a.api.SharedService.GetOffer(id).terms,b.api.SharedService.GetOffer(id).terms)
+    equal(a.env.IOUDB.sharedByCharacter[a.api.Character()].store.offers[id].state,"COMMITTED")
+    equal(b.env.IOUDB.sharedByCharacter[b.api.Character()].store.offers[id].state,"COMMITTED")
+    assert(same(a.api.GetLedger(),personalA) and same(b.api.GetLedger(),personalB))
+    assert(a.api.UI.shared.details:GetText():find("their IOU acknowledged",1,true))
+    a.api.UI.shared:Hide(); b.api.UI.shared:Hide()
+    assert(not a.api.SharedService.IsEnabled() and not b.api.SharedService.IsEnabled())
 end)
 
 return results

@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.3.0-alpha.2"
+IOU.VERSION = "0.3.0-alpha.3"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -210,6 +210,11 @@ local function slash(command)
     local original = (command or ""):match("^%s*(.-)%s*$")
     command = original:lower()
     if command == "" then IOU.Toggle()
+    elseif command == "shared off" then
+        local ok, err = IOU.SharedService.Disable()
+        IOU.Message(ok and "Shared agreements disconnected; unfinished offers are paused." or tostring(err or "Shared agreement recovery is pending."))
+    elseif command == "shared" then IOU.ShowShared()
+    elseif command:match("^shared%s+") then IOU.ShowShared(original:match("^%S+%s+(.+)$"))
     elseif command == "test stop" then
         IOU.Transport.Stop(); IOU.Message("Connection test stopped; listening is off.")
     elseif command == "test" then IOU.ShowConnectionTest()
@@ -228,6 +233,7 @@ local function slash(command)
         IOU.Message("/iou - ledger; /iou add - new agreement; /iou export - backup; /iou import - restore.")
         IOU.Message("/iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
         IOU.Message("/iou test [full player name] - connection test; /iou test stop - stop listening.")
+        IOU.Message("/iou shared [full player name] - shared agreements; /iou shared off - disconnect.")
     else IOU.Message("Unknown command. Use /iou help.") end
 end
 
@@ -238,6 +244,10 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:SetScript("OnEvent", function()
     local ok, err = IOU.Initialize()
     if not ok then IOU.Message(err); return end
+    if IOU.SharedService then
+        local sharedOK, sharedError = IOU.SharedService.Initialize()
+        if not sharedOK then IOU.Message("Shared agreements: " .. tostring(sharedError)) end
+    end
     if IOU.UpdateLauncher then IOU.UpdateLauncher() end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then

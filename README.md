@@ -4,7 +4,7 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.3.0-alpha.2 adds the offline shared-agreement foundation.** The stable personal ledger remains available as [0.2.0](https://github.com/PhilForever/IOU/releases/tag/v0.2.0). The alpha includes a strict protocol engine and codec, verified with deterministic two-peer simulations, plus the optional connection test. Shared proposals, saved shared records, and a consent UI are still under development; personal bookkeeping works as before.
+**0.3.0-alpha.3 adds experimental shared gold agreements.** The stable personal ledger remains available as [0.2.0](https://github.com/PhilForever/IOU/releases/tag/v0.2.0). Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. Shared records are saved separately for each character. Automated simulations cover the full handshake; actual Forever delivery and rendering remain unverified. Personal bookkeeping works as before.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
@@ -53,6 +53,8 @@ Gold summaries cover gold agreements only. Item and favor quantities retain thei
 | `/iou export` | Open this character's backup text. |
 | `/iou import` | Open the backup import dialog. |
 | `/iou settings` | Open launcher, reminder, and position settings. |
+| `/iou shared [full player name]` | Open experimental shared agreements without sending. |
+| `/iou shared off` | Disconnect and pause unfinished shared offers. |
 | `/iou test [full player name]` | Open the optional connection test without sending; Listen enables replies. |
 | `/iou test stop` | Stop connection-test sending and listening. |
 | `/iou minimap show` / `/iou minimap hide` | Show or hide the minimap button. |
@@ -64,9 +66,9 @@ In keybinding settings, find **IOU** and assign the ledger toggle to a key of yo
 
 ## Saved data and backups
 
-IOU stores its data in the account SavedVariable `IOUDB`, with separate character ledgers and shared display/reminder settings. WoW saves it on a successful reload or logout. Updating the addon files keeps those records.
+IOU stores its data in the account SavedVariable `IOUDB`, with separate personal character ledgers, separate shared-agreement records, and account display/reminder settings. WoW saves it on a successful reload or logout. Updating the addon files keeps those records.
 
-Use **Backups** or `/iou export`, select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's agreements and history. It can contain player names and private notes; remove personal information before sharing one in a public issue.
+Use **Backups** or `/iou export`, select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's personal agreements and history. Shared agreements are not included in `IOU1`/`IOU2` exports or affected by personal imports. Backups can contain player names and private notes; remove personal information before sharing one in a public issue.
 
 To restore a backup, paste it in `/iou import`, choose **Preview import**, review the replacement, and confirm. Import replaces the current character's ledger rather than merging it. Cancelling the preview leaves your data unchanged. **Previous ledger** provides the snapshot taken before the last confirmed replacement; there is one previous snapshot per character.
 
@@ -74,11 +76,13 @@ Version 0.2 exports `IOU2:` backups, accepts older `IOU1:` backups, and upgrades
 
 ## What IOU records
 
-IOU is manual personal bookkeeping. It does not detect trades, verify payments, synchronize ledgers, or send agreement messages. A settled entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+The personal ledger is manual bookkeeping. It does not detect trades, verify payments, or synchronize personal entries. A settled personal entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+
+The alpha's **Shared** view exchanges gold proposals and explicit acceptance with one enabled peer. Both players opt in; a separate review shows exact terms before consent. Closing the window or reloading disconnects and pauses unfinished offers. Agreed records stay separate from personal totals, and shared repayments are not implemented yet. Read the [Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md) for use and interrupted-offer recovery.
 
 The alpha's **Settings > Connection test** sends fixed diagnostic text over logged addon whispers only while you explicitly enable it for one player. Both players need the same build, enter each other's full name, and click **Listen**; one clicks **Run test**. IOU checks ASCII, Unicode, and 239/240-byte messages automatically and creates a copyable report. Keep both windows open; closing the window, **Stop**, or a reload disables listening. See the [short connection guide](https://github.com/PhilForever/IOU/blob/main/docs/connection-test.md). Reports contain player names, so share them privately.
 
-The [Shared Agreements protocol draft](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) and [development guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-development.md) describe the implemented offline engine and the next integration stages. Offline development continues independently of live transport testing; live two-client delivery remains unverified and is required before calling the player-facing shared pilot verified.
+The [Shared Agreements specification](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) and [development guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-development.md) describe the engine, bounded transport, and storage. Development continues independently of live testing; actual two-client delivery remains unverified and must be reported separately from simulations.
 
 No third-party addon libraries are required. The addon is available under the [MIT license](LICENSE).
 

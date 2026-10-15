@@ -1,8 +1,8 @@
 # Shared Agreements: protocol draft
 
-**DRAFT for the 0.3 development cycle. Version 0.3.0-alpha.2 implements the offline state and codec foundation only.**
+**Experimental specification for the 0.3 development cycle. Alpha.3 implements the engine, codec, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
 
-This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The codec and state engine can simulate proposals, explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. See the [development API](shared-development.md). They do not send messages or save shared records. Live transport and packet framing, persistence integration, consent UI, and the two-player pilot remain future work. The optional [connection test](connection-test.md) remains available when live delivery testing resumes.
+This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. Alpha.3 wraps them in an opt-in service and UI. See the [development API](shared-development.md) and [player guide](shared-agreements.md). The optional [connection test](connection-test.md) remains available when live delivery testing resumes. Shared repayments and shared backup/import are future work.
 
 ## Scope and trust
 
@@ -22,7 +22,7 @@ Use a distinct versioned shared prefix; never interpret test-prefix traffic as p
 
 The initial send ceiling is 240 **UTF-8 bytes for the complete message**, subject to the live test. It is a chosen budget, not a claim about the client's absolute limit. Validate before enqueueing. No binary compression or opaque encoding of user-authored text.
 
-If complete terms do not fit the verified budget, the first pilot must either reject with an understandable limit before proposing, or implement and test bounded framing separately. Never truncate terms or silently accept a partial proposal. Define framing and field budgets before calling this specification wire-ready.
+Alpha.3 frames up to 4096 bytes of logical text into at most 32 UTF-8-safe packets under `IOU_SHAREDv1`. Each packet has a readable `SW1` transfer/part/count/total header and stays within the chosen 240-byte ceiling. Reassembly is peer scoped, bounded to 8 active/8 cached transfers and 32 KiB, and expires at 45 seconds. Conflicts never reach the engine. Automated checks establish framing behavior; the real client's transport ceiling and event behavior remain unverified. Terms are never truncated.
 
 ## Participant identity
 
@@ -48,11 +48,11 @@ Canonical terms contain these fields, in this order:
 | `dueUTC` | Integer `0` means no deadline; otherwise a validated UTC Unix timestamp in canonical integer form. |
 | `note` | Valid UTF-8 plain text, within a defined byte limit; no control bytes or WoW formatting escapes. |
 
-The implemented canonical terms format starts with `IOUST1:` and serializes those fields in fixed order as comma-terminated UTF-8 netstrings: `length:value,`. Lengths count bytes. The logical message format uses `IOUSM1:` with the same netstring convention. Reject noncanonical lengths, trailing data, malformed UTF-8, missing fields, and extra fields. Keep the exact canonical bytes; never regenerate accepted terms through display formatting. The future review UI must use those parsed bytes, showing both full names, direction, amount, note, and due time before consent.
+The implemented canonical terms format starts with `IOUST1:` and serializes those fields in fixed order as comma-terminated UTF-8 netstrings: `length:value,`. Lengths count bytes. The logical message format uses `IOUSM1:` with the same netstring convention. Reject noncanonical lengths, trailing data, malformed UTF-8, missing fields, and extra fields. Keep the exact canonical bytes; never regenerate accepted terms through display formatting. The review UI uses those parsed bytes, showing both full names, direction, amount, note, and due time before consent, and rechecks the selected terms/state/peer before confirming.
 
 A user-selected due day means **23:59:59 UTC on that day**, explicitly labeled in review. Local-time displays also show the UTC value. Existing personal due dates retain their existing local-day meaning; they must not be silently converted to shared dates.
 
-The offline API requires caller-supplied agreement and offer IDs, rejects any reuse in its store, and generates message and semantic IDs from a local monotonic counter. Incoming IDs are scoped to the exact peer and offer; they are identifiers, not secrets. The future live caller must generate collision-resistant agreement/offer IDs with a session nonce. Acceptance binds exact canonical term bytes; fingerprints can be added for diagnostics but cannot replace exact comparison. Same offer ID with different bytes is a rejected conflict.
+The pure API requires caller-supplied agreement and offer IDs, rejects any reuse in its store, and generates message and semantic IDs from a local monotonic counter. Incoming IDs are scoped to the exact peer and offer; they are identifiers, not secrets. The service allocates collision-checked agreement/offer IDs from a per-character nonce and persisted counter. Acceptance binds exact canonical term bytes; fingerprints can be added for diagnostics but cannot replace exact comparison. Same offer ID with different bytes is a rejected conflict.
 
 ## Logical message schema
 
@@ -69,7 +69,7 @@ This table defines logical semantics, not final packet syntax. The implemented c
 | `OUTCOME` | A to B | Recorded `DECLINED` or `WITHDRAWN` outcome and ID; or the original `COMMIT` when already committed. |
 | `STATUS` | Either way | Common fields only: requests the current retained response for a known offer. The reply reuses that proposal, acceptance, commit, acknowledgment, or terminal outcome; never grants consent. |
 
-All term-bearing messages must compare the full canonical term bytes. Control messages must resolve their binding against the locally retained exact terms; a fingerprint alone cannot introduce or replace terms. Unknown control messages cannot create accepted records. Exact framing, field limits, and readable handling of terms exceeding one packet are required implementation prerequisites.
+All term-bearing messages compare the full canonical term bytes. Control messages resolve their binding against the locally retained exact terms; a fingerprint alone cannot introduce or replace terms. Unknown control messages cannot create accepted records. The bounded logical codec and readable packet framing enforce limits before the engine receives a complete message.
 
 ## Processing order and idempotency
 
@@ -118,13 +118,13 @@ The future shared backup format must include local-role and consent evidence and
 
 ## Storage, limits, and integration
 
-Planned persistence must use a separate versioned `IOUDB.sharedByCharacter[localCharacterKey]` store. The current engine creates a plain character-scoped table without reading or writing `IOUDB`. Preserve the existing personal schema and exports. Validate all loaded keys and shapes before use; network IDs are opaque lookup keys, never Lua paths or table field selectors. Do not import network objects directly into database tables or allow unknown keys to overwrite local metadata.
+The service uses a separate versioned wrapper under `IOUDB.sharedByCharacter[localCharacterKey]`, containing the pure engine store, closed-paused review markers, a nonce, and an allocation counter. The engine itself performs no I/O. Existing personal schema and exports stay unchanged. Loaded wrapper keys, owner, timestamps, counters, terms, and consent evidence are validated before use; invalid data is left untouched. Network IDs are opaque lookup keys, never Lua paths or table field selectors. Network objects never overwrite local wrapper metadata.
 
 Keep immutable terms, local role, explicit local consent evidence, acceptance/commit/outcome records, append-only history, bounded processed-message responses, tombstones, and a bounded outbox. Storage and UI identifiers must distinguish `personal:<id>` from `shared:<id>`; shared counters do not allocate personal ledger IDs.
 
-Initial resource budgets: 32 pending inbox offers total, 4 per peer, 32 outbound messages total, 240 bytes per packet, and a 64 KiB in-progress framing budget only if framing is later approved. Cap incoming packet frequency per peer and globally before expensive parsing. Blocked peers produce no inbox or auto-popup. Show an inbox count; never auto-accept or repeatedly interrupt gameplay.
+Implemented resource budgets: 32 retained offers total, 4 unreviewed proposals per enabled peer, 32 outbound logical messages/128 packets, 240 bytes per packet, and 32 KiB of reassembly storage. Only one explicitly enabled peer is accepted. A 120-token receive bucket refills at two tokens per second before packet parsing. Other senders produce no inbox or auto-popup. The paged list shows an offer count; it never auto-accepts or interrupts gameplay with incoming popups.
 
-Retry only the same immutable payload, no faster than a shared rate-limited queue permits: at most three automatic retries, approximately 3, 10, and 30 seconds after the initial attempt. Then pause for explicit retry or reconciliation. Bound response replay too, so duplicates cannot cause amplification. Queue saturation gives visible feedback and does not discard consent/history.
+Alpha.3 uses explicit Retry only, with the same retained immutable payload/IDs and a one-packet-per-second queue. Duplicate processing may replay an existing response but never creates another decision; queue limits and receive rate limits bound those responses. Queue saturation gives visible feedback before state replacement. An unexpected enqueue failure after saving returns the saved offer for Retry instead of inviting a second proposal. Any future automatic retry policy must remain bounded and must not reinterpret timeout as a semantic outcome.
 
 Retain terminal tombstones while corresponding records exist. A compaction policy may keep compact outcomes instead of full dedupe records; it must never turn an unknown ACCEPT/COMMIT into permission to recreate an agreement. When capacity is reached, pause new proposals and offer explicit archival rather than silently evicting live consent or outcomes.
 
@@ -133,7 +133,7 @@ Do not count drafts or pending offers as debt. Shared accepted balances must be 
 ## Release gates
 
 1. **Connection experiment:** two actual clients, exact observed names, ASCII/Unicode and measured-size echo reports, API result handling, blocked/offline behavior, and stopping after reload. A self-test is local preflight only.
-2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. Finalize framing after probe evidence.
+2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. Alpha.3 implements this path with conservative framing; real client transport behavior remains unverified.
 3. **Failure simulation:** drop, duplicate, delay, reorder, and corrupt every handshake message; inject foreign senders, changed terms under reused IDs, unknown IDs, saturated queues, malformed UTF-8, and missing success enums. Exercise withdrawal/accept races in both orders.
 4. **Recovery simulation:** reload and simulated loss of unsaved state after each step, plus restoring old backups. Verify missing consent never activates, duplicates never create debt, and pending UI never claims delivery.
 5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes before a public shared-agreement release.
