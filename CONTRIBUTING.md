@@ -9,6 +9,7 @@ Use Python 3.12 and install the test dependency:
 ```sh
 python -m pip install -r requirements-dev.txt
 python tools/test_iou.py
+python tools/test_curseforge.py
 python tools/package_iou.py
 ```
 
@@ -26,4 +27,4 @@ The runtime is deliberately self-contained. Keep real player data, machine paths
 
 Describe the user-facing problem and final behavior, state how you validated it, and identify any remaining live checks. Update the README or changelog when behavior changes. CI tests and packages the addon; it does not replace client testing.
 
-For a release, update the TOC version and changelog, complete the intended live checks, and push the corresponding `v<version>` tag. The release workflow refuses a mismatched version, reruns tests, and uploads the installable ZIP and checksum to a GitHub release. A push to `main` builds a CI artifact without publishing a release.
+For a release, update the TOC version and changelog, record which checks were performed, and push the corresponding `v<version>` tag. The release workflow refuses a mismatched version, reruns tests, and uploads the installable ZIP and checksum to GitHub and CurseForge. A push to `main` builds a CI artifact without publishing a release. See [Publishing](docs/publishing.md) for Actions configuration and backfilling an existing release.

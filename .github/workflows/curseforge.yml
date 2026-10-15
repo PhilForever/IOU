@@ -1,0 +1,95 @@
+name: Publish CurseForge
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      CF_API_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to publish
+        required: true
+        default: v0.2.0
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: curseforge-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out publisher
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Verify requested tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python tools/curseforge_upload.py --tag "$RELEASE_TAG" --check-tag-only
+      - name: Download published build and prior receipt
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release download "$RELEASE_TAG" --pattern 'IOU-*.zip' --pattern 'IOU-*.zip.sha256' --dir artifacts
+          assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+          if grep -Fxq curseforge-upload.json <<< "$assets"; then
+            gh release download "$RELEASE_TAG" --pattern curseforge-upload.json --dir artifacts
+            echo 'published=true' >> "$GITHUB_OUTPUT"
+          elif grep -Fxq curseforge-upload-intent.json <<< "$assets"; then
+            echo '::error::A previous upload has no receipt. Inspect CurseForge files before retrying; an upload may already have succeeded.'
+            exit 1
+          else
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prepare upload intent
+        if: steps.existing.outputs.published != 'true'
+        env:
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python tools/curseforge_upload.py --tag "$RELEASE_TAG" \
+            --archive "artifacts/IOU-${RELEASE_TAG#v}.zip" \
+            --checksum "artifacts/IOU-${RELEASE_TAG#v}.zip.sha256" \
+            --project-id "$CF_PROJECT_ID" --prepare-intent artifacts/curseforge-upload-intent.json
+      - name: Retain intent before contacting CurseForge
+        if: steps.existing.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" artifacts/curseforge-upload-intent.json
+      - name: Upload verified ZIP to CurseForge
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python tools/curseforge_upload.py --tag "$RELEASE_TAG" \
+            --archive "artifacts/IOU-${RELEASE_TAG#v}.zip" \
+            --checksum "artifacts/IOU-${RELEASE_TAG#v}.zip.sha256" \
+            --project-id "$CF_PROJECT_ID"
+      - name: Retain upload receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" artifacts/curseforge-upload.json --clobber
