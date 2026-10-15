@@ -1,0 +1,87 @@
+# IOU
+
+A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gold, items, or help, and what you owe other players.
+
+Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
+
+## Install
+
+1. Download an `IOU-<version>.zip` asset from [Releases](https://github.com/PhilForever/IOU/releases), when available.
+2. Extract its `IOU` folder into `_classic_beta_/Interface/AddOns/`. The final path must be `AddOns/IOU/IOU.toc`.
+3. Start the game, enable **IOU** in the AddOns list, and enter `/iou`.
+
+For a source checkout, copy the repository into a folder named `IOU` under `AddOns`; `IOU.toc` must be directly inside it. GitHub's automatic **Source code** archives use a different folder name, which you need to rename. Fully restart the client after a first installation or an update that adds files or keybindings. An ordinary Lua-only update can be loaded with `/reload`.
+
+IOU targets Forever interface `16001`. Version 0.1 was tested in game with both `/reload` and a full exit/restart, including working saved data. Version 0.2 adds the features below and still needs the live regression checks in the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md). Compatibility with other WoW clients has not been established.
+
+## Keep track of an agreement
+
+Click **+ New IOU**, choose **Owed to me** or **I owe**, and enter the player and agreement type:
+
+| Type | Example | How to enter it |
+| --- | --- | --- |
+| Gold | A 5g loan | Enter gold, silver, and copper. |
+| Items | 20 Linen Cloth | Enter a whole quantity and item name or link. |
+| Favor | 30 minutes of quest help | Enter quantity `30` and label `minutes of quest help`. |
+
+Include the player's realm when it helps distinguish names. Item links can be pasted or inserted by focusing the item label field and Shift-clicking an item. Notes and an optional due date provide context. Enter dates as `YYYY-MM-DD`; an agreement becomes overdue after the end of that day in the client's local time.
+
+Select an agreement to view its remaining balance and history. Record a partial payment or delivery, or settle its remaining balance. A mistaken repayment can be reversed with a reason; the original event and correction stay visible.
+
+Use **Edit details** to change the player, item/favor label, note, and due date with an audit reason. Amount, type, and direction stay fixed so an edit cannot rewrite a loan's financial history. **Cancel IOU** removes an agreement from active balances without recording a payment. **Restore IOU** brings it back; both actions require a reason and retain the records.
+
+## Find what needs attention
+
+- **Owed to me**, **I owe**, and **History** separate active agreements from completed or cancelled records.
+- Search player names, labels, and notes, filter by gold/items/favors, and sort by newest, oldest, player, or due date.
+- Due dates make overdue agreements visible. Optional login reminders summarize overdue agreements for the current character.
+- The minimap button opens the ledger. You can also assign a key in the game's keybinding settings.
+- Move the ledger by dragging its header; IOU remembers its position.
+
+Gold summaries cover gold agreements only. Item and favor quantities retain their own units.
+
+## Commands
+
+| Command | Action |
+| --- | --- |
+| `/iou` | Show or hide the ledger. |
+| `/iou add` | Open a new agreement. |
+| `/iou export` | Open this character's backup text. |
+| `/iou import` | Open the backup import dialog. |
+| `/iou settings` | Open launcher, reminder, and position settings. |
+| `/iou minimap show` / `/iou minimap hide` | Show or hide the minimap button. |
+| `/iou reminders on` / `/iou reminders off` | Enable or disable login reminders. |
+| `/iou resetpos` | Reset the ledger window position. |
+| `/iou help` | Show all available commands and settings. |
+
+In keybinding settings, find **IOU** and assign the ledger toggle to a key of your choice.
+
+## Saved data and backups
+
+IOU stores its data in the account SavedVariable `IOUDB`, with separate character ledgers and shared display/reminder settings. WoW saves it on a successful reload or logout. Updating the addon files keeps those records.
+
+Use **Backups** or `/iou export`, select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's agreements and history. It can contain player names and private notes; remove personal information before sharing one in a public issue.
+
+To restore a backup, paste it in `/iou import`, choose **Preview import**, review the replacement, and confirm. Import replaces the current character's ledger rather than merging it. Cancelling the preview leaves your data unchanged. **Previous ledger** provides the snapshot taken before the last confirmed replacement; there is one previous snapshot per character.
+
+Version 0.2 exports `IOU2:` backups, accepts older `IOU1:` backups, and upgrades older saved ledgers while preserving agreements and events. The backup is encoded text, not executable Lua. Keep the prefix and the entire backup; visual wrapping is normal.
+
+## What IOU records
+
+IOU is manual personal bookkeeping. It does not detect trades, verify payments, synchronize with other players, or send agreement messages. A settled entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+
+No third-party addon libraries are required. The addon is available under the [MIT license](LICENSE).
+
+## Development
+
+Python 3.12 and Lupa run the Lua 5.1 regression harness:
+
+```sh
+python -m pip install -r requirements-dev.txt
+python tools/test_iou.py
+python tools/package_iou.py
+```
+
+The package command validates TOC/XML dependencies and builds an installable ZIP under `artifacts/`, with a SHA-256 checksum. Only runtime files, this README, the changelog, and the license are included. CI runs the same checks on pull requests and pushes to `main`. Pushing a `v<version>` tag runs the release workflow; the tag must match `IOU.toc`.
+
+Automated tests exercise domain behavior, backup validation, and mocked UI interactions. They cannot establish actual rendering, event behavior, combat taint, or persistence in the client. See [Contributing](https://github.com/PhilForever/IOU/blob/main/CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md).

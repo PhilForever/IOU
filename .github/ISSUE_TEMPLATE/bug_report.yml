@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible IOU problem.
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: Use invented player names and notes. Do not attach real ledger exports, SavedVariables, or account data to this public issue.
+  - type: input
+    id: addon-version
+    attributes:
+      label: IOU version
+      placeholder: '0.2.0'
+    validations:
+      required: true
+  - type: input
+    id: client-build
+    attributes:
+      label: Forever client build
+      description: Include the build from the login screen or state that it is unknown.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the agreement type and action that triggered the problem.
+      placeholder: |
+        1. Create a gold agreement with an invented player name.
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: lua-error
+    attributes:
+      label: Lua error text
+      description: Paste the complete error, if one appeared.
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: Other context
+      description: For layout issues, include resolution and UI scale. Mention relevant UI addons and whether the problem persists with only IOU enabled.

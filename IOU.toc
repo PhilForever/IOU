@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: IOU
+## Notes: Your personal debt and favor ledger for Azeroth.
+## Author: PhilForever
+## Version: 0.2.0
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+## X-Website: https://github.com/PhilForever/IOU
+## X-License: MIT
+## SavedVariables: IOUDB
+
+ledger.lua
+codec.lua
+core.lua
+ui.lua
+launcher.lua
