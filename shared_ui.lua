@@ -51,11 +51,12 @@ local function reviewText(offer)
             and "Peer receipt: their IOU acknowledged this commitment."
             or (offer.role == "recipient" and "Commitment received; acknowledgment queued/sent."
                 or "Commitment recorded; peer acknowledgment not yet observed.")
-        text[#text+1] = "This records consent, not a payment."
+        text[#text+1] = "IOU records player acknowledgment; it does not verify a gold transfer."
     elseif offer.state == "PAUSED" then
         text[#text+1] = "An interrupted offer cannot resume automatically. Reconcile the old offer with the other player before replacing it."
     end
     if offer.localClosed then text[#text+1] = "Local review: " .. offer.localCloseReason end
+    if IOU.SharedPaymentDetails then text[#text+1] = IOU.SharedPaymentDetails(offer) end
     text[#text+1] = ""
     text[#text+1] = "Agreement: " .. offer.agreementId
     text[#text+1] = "Offer: " .. offer.offerId
@@ -116,12 +117,15 @@ function IOU.ShowSharedReview(id, action)
     local f = UI.sharedReview
     f.offerId, f.terms, f.state, f.action = id, offer.terms, offer.state, action
     local captions = {accept="Accept these terms", decline="Decline this offer", withdraw="Withdraw this proposal", close="Mark reviewed locally"}
-    f.title:SetText(action == "close" and "Review interrupted offer" or "Review agreement")
+    local terms = termsOf(offer)
+    f.title:SetText(action == "close" and "Review interrupted offer"
+        or terms.kind == "GOLD_PAYMENT" and "Review payment"
+        or terms.kind == "GOLD_CORRECTION" and "Review correction" or "Review agreement")
     f.details:SetText(literal(reviewText(offer)))
     f.content:SetHeight(math.max(356, f.details:GetStringHeight() + 16)); f.scroll:SetVerticalScroll(0)
     f.explanation:SetText(action == "close"
         and "This only records your local review. It does not cancel or settle the other player's record. Reconcile with them before proposing a replacement."
-        or "Read both full names, who owes whom, the amount, deadline and note. Confirming records your decision about these exact terms.")
+        or "Read the full names, amount, note and any payment history or correction target. Confirming records your decision about these exact terms; it does not verify a trade.")
     f.reason:SetShown(action == "close"); f.reasonCaption:SetShown(action == "close")
     f.reason:SetText(""); f.status:SetText(""); f.confirm:SetText(captions[action])
     f.confirm:SetEnabled(not not reviewCurrent(f)); f:Show()
@@ -203,7 +207,8 @@ refresh = function()
         if offer then
             local terms = termsOf(offer)
             row.offerId = offer.offerId
-            row.title:SetText(literal(terms and peerOf(offer,terms) or "Unreadable offer"))
+            local kind = terms and (terms.kind == "GOLD_PAYMENT" and "Payment: " or terms.kind == "GOLD_CORRECTION" and "Correction: " or "") or ""
+            row.title:SetText(literal(terms and kind .. peerOf(offer,terms) or "Unreadable offer"))
             row.amount:SetText(terms and IOU.Ledger.FormatMoney(terms.amountCopper) or "")
             row.state:SetText(literal(summary(offer)))
             row:SetBackdropColor(offer.offerId==f.selected and 0.22 or 0.10, offer.offerId==f.selected and 0.20 or 0.12, 0.08, 1)
@@ -225,7 +230,9 @@ refresh = function()
     if review and review:IsShown() and not reviewCurrent(review) then
         review.confirm:SetEnabled(false); review.status:SetText("This offer or connection changed. Close this review and select it again.")
     end
+    if IOU.RefreshSharedPayments then IOU.RefreshSharedPayments(selected) end
 end
+IOU.RefreshShared = refresh
 
 function IOU.ShowShared(peer)
     if not IOU.Initialize() then return end
@@ -278,12 +285,15 @@ function IOU.ShowShared(peer)
             f.problem=nil; local ok,err=S.Retry(f.selected); if not ok then f.problem=err end; refresh()
         end)
         f.closePaused=button(f,"Review paused offer",270,24,-674,function() IOU.ShowSharedReview(f.selected,"close") end)
-        font(f,10,334,-684,590,"Shared offers stay separate from personal balances. Shared payments are not recorded here yet.",MUTED)
+        f.payment=button(f,"Record payment",178,334,-674,function() IOU.ShowSharedPayment(f.selected,"payment") end)
+        f.settle=button(f,"Settle balance",178,522,-674,function() IOU.ShowSharedPayment(f.selected,"settle") end)
+        f.correction=button(f,"Correct payment",216,710,-674,function() IOU.ShowSharedPayment(f.selected,"correction") end)
         f.peer:SetScript("OnEscapePressed",function() f:Hide() end)
         f:SetScript("OnHide",function()
             f.peer:ClearFocus()
             if UI.sharedForm then UI.sharedForm:Hide() end
             if UI.sharedReview then UI.sharedReview:Hide() end
+            if UI.sharedPaymentForm then UI.sharedPaymentForm:Hide() end
             S.Disable()
         end)
         IOU.OnSharedChanged=function() f.problem=nil; refresh() end

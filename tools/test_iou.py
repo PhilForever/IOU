@@ -42,7 +42,9 @@ def main() -> int:
         raise RuntimeError(f"No IOU Lua files found in {addon}")
     harnesses = [ROOT / "tools" / name for name in
                  ("test_iou.lua", "test_transport.lua", "test_shared.lua",
-                  "test_shared_wire.lua", "test_shared_service.lua")]
+                  "test_shared_wire.lua", "test_shared_service.lua",
+                  "test_shared_payment_codec.lua", "test_shared_payments.lua",
+                  "test_shared_payment_integration.lua")]
     for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
@@ -68,7 +70,8 @@ def main() -> int:
             print("PASS", name)
     print(f"Lua 5.1 syntax: {len(files)} addon files plus {len(harnesses)} test harnesses.")
     for label, count in zip(("Ledger/UI", "Transport", "Shared agreement",
-                             "Shared wire", "Shared service"), counts,
+                             "Shared wire", "Shared service", "Shared payment codec",
+                             "Shared payments", "Shared payment integration"), counts,
                             strict=True):
         print(f"{label} checks: {count} passed.")
     print(f"Checks: {sum(counts)} passed.")

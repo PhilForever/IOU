@@ -1,12 +1,12 @@
 # Shared Agreements: protocol draft
 
-**Experimental specification for the 0.3 development cycle. Alpha.3 implements the engine, codec, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
+**Experimental specification for the 0.3 development cycle. Alpha.4 adds acknowledged payments and payment reversals to the engine, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
 
-This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. Alpha.3 wraps them in an opt-in service and UI. See the [development API](shared-development.md) and [player guide](shared-agreements.md). The optional [connection test](connection-test.md) remains available when live delivery testing resumes. Shared repayments and shared backup/import are future work.
+This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. The opt-in service and UI support obligations and acknowledged financial events. See the [development API](shared-development.md) and [player guide](shared-agreements.md). The optional [connection test](connection-test.md) remains available when live delivery testing resumes. Shared backup/import remains future work.
 
 ## Scope and trust
 
-The first pilot supports one fixed proposer, one recipient, and an immutable gold obligation between two online characters. Either participant may be the debtor. The proposer explicitly offers the displayed terms; the recipient explicitly accepts those same terms. Counteroffers, shared repayments, amendments, crafting contracts, and automatic trade inference are deferred.
+The pilot supports one fixed proposer, one recipient, and an immutable gold obligation between two online characters. Either participant may be the debtor. The proposer explicitly offers the displayed terms; the recipient explicitly accepts those same terms. The original proposer also sequences payment and full payment-reversal child offers, each requiring explicit acceptance. Counteroffers, amendments, crafting contracts, and automatic trade inference are deferred.
 
 An acknowledged agreement records the players' stated consent. It does not establish that money changed hands, authenticate an unmodified addon, or provide a cryptographic signature. A fingerprint detects accidental disagreement; it is not proof against a modified client.
 
@@ -53,6 +53,18 @@ The implemented canonical terms format starts with `IOUST1:` and serializes thos
 A user-selected due day means **23:59:59 UTC on that day**, explicitly labeled in review. Local-time displays also show the UTC value. Existing personal due dates retain their existing local-day meaning; they must not be silently converted to shared dates.
 
 The pure API requires caller-supplied agreement and offer IDs, rejects any reuse in its store, and generates message and semantic IDs from a local monotonic counter. Incoming IDs are scoped to the exact peer and offer; they are identifiers, not secrets. The service allocates collision-checked agreement/offer IDs from a per-character nonce and persisted counter. Acceptance binds exact canonical term bytes; fingerprints can be added for diagnostics but cannot replace exact comparison. Same offer ID with different bytes is a rejected conflict.
+
+## Payment and correction terms (alpha.4)
+
+An event is a fresh offer using the same explicit PROPOSE/ACCEPT/COMMIT/ACK handshake. Its proposer and participants must match the original obligation. Only that original proposer sequences events, including when the proposer is the debtor. Both peers need alpha.4; protocol-1 obligation bytes remain unchanged.
+
+Event terms use `protocol=2`, `kind=GOLD_PAYMENT` or `GOLD_CORRECTION`, and the `IOUST2:` header. After the common fields above, exact ordered fields are `parentAgreementId,parentOfferId,parentCommitId,parentTerms,baseRevision,baseChain,reversesId`. `dueUTC` must be zero. The parent IDs, commitment, complete original canonical terms, and participants are checked against retained local consent.
+
+`baseChain` starts with `IOUSC1:` and contains a bounded dense array of flat rows in exact order: `kind,agreementId,offerId,commitId,amountCopper,note,reversesId`. These include all event-specific semantics. Each prior event's complete terms can be reconstructed from its row and preceding prefix; recursive embedding is avoided. A balance alone or a fingerprint cannot replace exact chain comparison. Missing, changed, reordered, or conflicting local evidence rejects an event. The 4096-byte complete logical-message ceiling still applies; terms are never shortened to fit.
+
+The parent and latest event must be acknowledged before the proposer can initiate another event. A recipient includes an event in the derived balance on COMMIT; a proposer includes it only upon the exact ACK. A missing ACK may temporarily leave different displayed balances, with further proposer events blocked. Duplicate delivery reuses retained responses and never applies an amount twice. Only one unresolved child may target a parent; a paused child blocks a successor until explicitly reviewed locally after reconciliation.
+
+A payment is positive integer copper no greater than the remaining amount. A correction requires a nonblank reason, targets one preceding confirmed and unreversed payment by offer ID, and reverses its full amount. Partial reversal, double reversal, and correction of a correction are rejected. Correcting a settlement reopens its amount. The service validates this financial graph on load and before any persistence, while personal totals and backup formats stay separate.
 
 ## Logical message schema
 
@@ -128,7 +140,7 @@ Alpha.3 uses explicit Retry only, with the same retained immutable payload/IDs a
 
 Retain terminal tombstones while corresponding records exist. A compaction policy may keep compact outcomes instead of full dedupe records; it must never turn an unknown ACCEPT/COMMIT into permission to recreate an agreement. When capacity is reached, pause new proposals and offer explicit archival rather than silently evicting live consent or outcomes.
 
-Do not count drafts or pending offers as debt. Shared accepted balances must be displayed separately until the first shared-balance rules ship. Future conversion from personal to shared must explicitly link and archive the personal entry after confirmed acceptance so the same obligation is counted once. A failed proposal leaves the personal record untouched.
+Do not count drafts or pending offers as debt. Shared balances are displayed separately from personal totals. Future conversion from personal to shared must explicitly link and archive the personal entry after confirmed acceptance so the same obligation is counted once. A failed proposal leaves the personal record untouched.
 
 ## Release gates
 
@@ -137,7 +149,7 @@ Do not count drafts or pending offers as debt. Shared accepted balances must be 
 3. **Failure simulation:** drop, duplicate, delay, reorder, and corrupt every handshake message; inject foreign senders, changed terms under reused IDs, unknown IDs, saturated queues, malformed UTF-8, and missing success enums. Exercise withdrawal/accept races in both orders.
 4. **Recovery simulation:** reload and simulated loss of unsaved state after each step, plus restoring old backups. Verify missing consent never activates, duplicates never create debt, and pending UI never claims delivery.
 5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes before a public shared-agreement release.
-6. **Later work:** mutually acknowledged payments and correction events determine a shared balance. Add amendments, trade assistance, and crafting only after that foundation is tested. Shared payment UI must distinguish player acknowledgment from independently verified transfer.
+6. **Payment foundation:** alpha.4 adds mutually acknowledged payments and full payment-reversal events with derived balances, exact historical binding, and simulation coverage. Shared payment UI distinguishes player acknowledgment from independently verified transfer. Dedicated shared backup/reconciliation, amendments, trade assistance, and crafting remain later work. Live testing is deferred and does not gate further alpha development; it remains required evidence before claiming client compatibility.
 
 ## Client reference pointers
 

@@ -833,7 +833,7 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua",
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua",
         "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
@@ -842,6 +842,8 @@ local function coreSession(config)
         local chunk=assert(loadstring(assert(IOU_SOURCES["ui.lua"]),"@IOU/ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_ui.lua"]),"@IOU/shared_ui.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["shared_payment_ui.lua"]),"@IOU/shared_payment_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
     end
     if config.launcher then
@@ -1923,4 +1925,7 @@ test("two complete addon sessions agree through framed whispers only after recip
     assert(not a.api.SharedService.IsEnabled() and not b.api.SharedService.IsEnabled())
 end)
 
+-- Later integration harnesses reuse the same complete addon environments. This
+-- stays in the test runtime; no helper is exported into an addon namespace.
+IOU_TEST_SUPPORT={Session=coreSession,Copy=copy,Same=same,VisibleText=visibleText}
 return results

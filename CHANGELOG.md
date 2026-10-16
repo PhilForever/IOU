@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0-alpha.4 — 2026-10-16
+
+- Added mutually acknowledged shared gold payments, settlement of the remaining balance, and reasoned full reversal of individual confirmed payments.
+- Added shared balance and event history, complete payment/correction review, explicit correction-target selection, and stale draft protection.
+- Kept the original agreement proposer as the event sequencer; a new event waits for acknowledgment of the parent and latest event. Balances distinguish an acknowledged event from a pending commitment.
+- Bound each event to exact original terms, parent commitment, and a flat canonical chain of prior acknowledged events. Rejected stale histories, overlapping events, overpayments, reused reversal targets, and oversized messages before persistence.
+- Preserved legacy shared gold terms and personal ledgers without changing their schema, balances, or backup format. Both peers need alpha.4 for payment events.
+- Added codec, financial-domain, UI, and full two-client packet simulations covering partial payment, settlement, corrections, acknowledgment loss, duplicates, stale bases, reload, and queue failures.
+
+Validation: Lua 5.1 regressions, mocked UI, simulated two-client packet delivery, publisher checks, and package validation. Actual in-game delivery, rendering, and shared-record persistence remain unverified; live testing is deferred while servers are unavailable. Dedicated shared backup/reconciliation remains future work.
+
 ## 0.3.0-alpha.3 — 2026-10-16
 
 - Added an experimental **Shared** view and `/iou shared` for proposing, reviewing, accepting, declining, and withdrawing gold agreements.

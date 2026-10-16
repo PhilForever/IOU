@@ -65,7 +65,7 @@ local function peer(name, key, saved)
         return true
     end
     ns.SharedWire=wire
-    for _,file in ipairs({"shared_codec.lua","shared.lua","shared_service.lua"}) do
+    for _,file in ipairs({"shared_codec.lua","shared.lua","shared_payments.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[file]),"@IOU/"..file))
         setfenv(chunk,env); chunk("IOU",ns)
     end
@@ -306,6 +306,60 @@ test("a failed pause latches recovery until a valid wall clock allows reconnecti
         rejected(function() return a.service.Retry(offer.offerId) end)
         assert(#a.queue==0)
     end
+end)
+
+test("shared payment service persists consent, enforces ACK sequencing and derives the agreed remaining gold",function()
+    local a,b=pair()
+    local parent=assert(propose(a,b))
+    assert(deliver(a,b)); assert(b.service.Accept(parent.offerId)); assert(deliver(b,a)); assert(deliver(a,b)); assert(deliver(b,a))
+    local unchanged=copy(a.db)
+    a.full=true
+    rejected(function() return a.service.ProposePayment(parent.offerId,2500,"Partial repayment") end)
+    assert(same(unchanged,a.db))
+    a.full=false
+    local payment=assert(a.service.ProposePayment(parent.offerId,2500,"Partial repayment"))
+    assert(deliver(a,b)); assert(b.service.Accept(payment.offerId)); assert(deliver(b,a)); assert(deliver(a,b))
+    assert(a.service.GetBalance(parent.offerId).remainingCopper==10000)
+    assert(b.service.GetBalance(parent.offerId).remainingCopper==7500)
+    rejected(function() return a.service.ProposePayment(parent.offerId,1000,"Wait for ACK") end)
+    assert(deliver(b,a)); assert(a.service.GetBalance(parent.offerId).remainingCopper==7500)
+    rejected(function() return b.service.ProposePayment(parent.offerId,1000,"Recipient cannot sequence") end)
+    rejected(function() return a.service.ProposePayment(parent.offerId,7501,"Overpayment") end)
+    assert(a.db.characters[a.key].marker=="private personal ledger")
+end)
+
+test("shared full corrections require both clients and leave their original payment and parent audit intact",function()
+    local a,b=pair()
+    local parent=assert(propose(a,b))
+    assert(deliver(a,b)); assert(b.service.Accept(parent.offerId)); assert(deliver(b,a)); assert(deliver(a,b)); assert(deliver(b,a))
+    local payment=assert(a.service.ProposePayment(parent.offerId,4000,"Recorded payment"))
+    assert(deliver(a,b)); assert(b.service.Accept(payment.offerId)); assert(deliver(b,a)); assert(deliver(a,b)); assert(deliver(b,a))
+    rejected(function() return a.service.ProposeCorrection(parent.offerId,payment.offerId,"") end)
+    local correction=assert(a.service.ProposeCorrection(parent.offerId,payment.offerId,"Both players reviewed the wrong amount"))
+    assert(a.service.GetBalance(parent.offerId).remainingCopper==6000)
+    assert(deliver(a,b)); assert(b.service.Accept(correction.offerId)); assert(deliver(b,a)); assert(deliver(a,b)); assert(deliver(b,a))
+    local view=a.service.GetBalance(parent.offerId)
+    assert(view.remainingCopper==10000 and view.events[1].reversed)
+    assert(a.service.GetOffer(payment.offerId).state=="COMMITTED")
+    assert(a.service.GetOffer(parent.offerId).messages.commit)
+    rejected(function() return a.service.ProposeCorrection(parent.offerId,payment.offerId,"Again") end)
+end)
+
+test("reloaded paused financial proposals cannot duplicate or silently change an established balance",function()
+    local a,b=pair()
+    local parent=assert(propose(a,b))
+    assert(deliver(a,b)); assert(b.service.Accept(parent.offerId)); assert(deliver(b,a)); assert(deliver(a,b)); assert(deliver(b,a))
+    local payment=assert(a.service.ProposePayment(parent.offerId,3000,"Interrupted"))
+    local pending=copy(a.queue[1].message)
+    local restored=peer(a.name,a.key,copy(a.db)); restored.stamp=200
+    assert(restored.service.Initialize()); assert(restored.service.GetOffer(payment.offerId).state=="PAUSED")
+    assert(restored.service.Enable(b.name))
+    rejected(function() return restored.service.ProposePayment(parent.offerId,3000,"Duplicate") end)
+    assert(restored.service.Disable()); assert(restored.service.ClosePaused(payment.offerId,"Reconciled with peer"))
+    assert(restored.service.Enable(b.name))
+    local fresh=assert(restored.service.ProposePayment(parent.offerId,3000,"Fresh explicit offer"))
+    assert(fresh.offerId~=payment.offerId and restored.service.GetBalance(parent.offerId).remainingCopper==10000)
+    rejected(function() return restored.receive(b.name,pending) end)
 end)
 
 return results

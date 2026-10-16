@@ -1,7 +1,7 @@
 local _, IOU = ...
 local V = {}
 IOU.SharedService = V
-local S, C = IOU.Shared, IOU.SharedCodec
+local S, C, P = IOU.Shared, IOU.SharedCodec, IOU.SharedPayments
 local entry, character, localName, failure, notice, peer, notifying, needsPause, handlingWireChange
 local MAX_COUNTER, MAX_TIME = 2147483647, 4102444800
 
@@ -94,7 +94,8 @@ local function validateEntry(value, owner)
         or value.version ~= 1 or type(value.nonce) ~= "string" or #value.nonce < 1 or #value.nonce > 40
         or not value.nonce:match("^[A-Za-z0-9_-]+$") or not integer(value.counter, MAX_COUNTER)
         or not tablePlain(value.closedPaused) then return nil, "Invalid shared storage wrapper." end
-    local ok, err = S.Validate(value.store)
+    if type(P) ~= "table" or type(P.Validate) ~= "function" then return nil, "The shared payment domain is unavailable." end
+    local ok, err = P.Validate(value.store,value.closedPaused)
     if not ok then return nil, err end
     if value.store.localName ~= owner then return nil, "Shared records belong to another character; they were left untouched." end
     for _, offer in pairs(value.store.offers) do
@@ -229,8 +230,11 @@ local function unresolved(value, other)
     return false
 end
 local function offerSnapshot(value, id)
-    local offer, err = S.Snapshot(value.store, id)
-    if not offer then return nil, err end
+    -- All callers have just validated this entry. Copy each selected record
+    -- directly instead of revalidating the entire ledger for every list row.
+    local source=value.store.offers[id]
+    if not source then return nil,"Unknown shared offer." end
+    local offer=clone(source)
     local closed = value.closedPaused[id]
     if closed then offer.localClosed, offer.localClosedAt, offer.localCloseReason = true, closed.at, closed.reason end
     return offer
@@ -238,12 +242,17 @@ end
 function V.GetStore()
     local value, err = current()
     if not value then return nil, err end
-    return S.Snapshot(value.store)
+    return clone(value.store)
 end
 function V.GetOffer(id)
     local value, err = current()
     if not value then return nil, err end
     return offerSnapshot(value, id)
+end
+function V.GetBalance(id)
+    local value, err = current()
+    if not value then return nil, err end
+    return P.View(value.store,id,value.closedPaused)
 end
 function V.List()
     local value, err = current()
@@ -293,7 +302,8 @@ local function receive(sender, message)
     if not ok then return reject(problem) end
     if value.closedPaused[message.offerId] then return reject("A delayed message for a locally closed paused offer was rejected.") end
     if message.kind == "PROPOSE" and not value.store.offers[message.offerId] then
-        if unresolved(value, sender) then return reject("Review the unresolved paused offer with this player before receiving a replacement.") end
+        local terms = C.ParseTerms(message.terms)
+        if terms.kind == "GOLD_OBLIGATION" and unresolved(value, sender) then return reject("Review the unresolved paused offer with this player before receiving a replacement.") end
         local count = 0
         for id, offer in pairs(value.store.offers) do
             if offer.role == "recipient" and offerPeer(offer) == sender and not value.closedPaused[id]
@@ -387,6 +397,31 @@ function V.Propose(fields)
     if not updated then return reject(outgoing) end
     candidate.store = updated
     return apply(candidate, outgoing, offerId)
+end
+local function proposeEvent(parentId, method, first, second)
+    local value, err = enabled()
+    if not value then return nil, err end
+    local parent = value.store.offers[parentId]
+    if not parent then return reject("Unknown original shared agreement.") end
+    if offerPeer(parent) ~= peer then return reject("Enable sharing with the original agreement's player first.") end
+    local terms, problem = method(value.store,parentId,first,second,value.closedPaused)
+    if not terms then return reject(problem) end
+    local candidate = clone(value)
+    local agreementId, offerId = allocate(candidate)
+    if not agreementId then return reject(offerId) end
+    local stamp
+    stamp, err = now()
+    if not stamp then return reject(err) end
+    local updated, outgoing = S.Propose(value.store,terms,agreementId,offerId,stamp)
+    if not updated then return reject(outgoing) end
+    candidate.store = updated
+    return apply(candidate,outgoing,offerId)
+end
+function V.ProposePayment(parentId,amountCopper,note)
+    return proposeEvent(parentId,P.BuildPayment,amountCopper,note)
+end
+function V.ProposeCorrection(parentId,paymentId,reason)
+    return proposeEvent(parentId,P.BuildCorrection,paymentId,reason)
 end
 local function mutate(method, id)
     local value, err = enabled()

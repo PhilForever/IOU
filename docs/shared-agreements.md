@@ -1,6 +1,6 @@
 # Shared gold agreements (experimental)
 
-Version **0.3.0-alpha.3** adds an opt-in agreement view under **Shared** or `/iou shared`. Both characters need this version or a compatible newer build. This is an experimental alpha: automated two-client simulations pass, while actual Forever addon-message delivery and rendering remain unverified.
+Version **0.3.0-alpha.4** adds payments and corrections to the opt-in agreement view under **Shared** or `/iou shared`. Both characters need alpha.4 for payment events; older alpha gold agreements are retained. This is an experimental alpha: automated two-client simulations cover the flow, while actual Forever addon-message delivery and rendering remain unverified.
 
 ## Propose and accept
 
@@ -9,9 +9,21 @@ Version **0.3.0-alpha.3** adds an opt-in agreement view under **Shared** or `/io
 3. The recipient selects the received offer and clicks **Review / accept**. A separate review shows both participants, debtor, creditor, amount, the full note, and the UTC deadline. **Accept these terms** records consent to those exact terms.
 4. IOU exchanges the commitment and acknowledgment. The status distinguishes an agreed record from observed peer acknowledgment. A successful API send alone is not a receipt.
 
-Either player can propose an obligation in either direction. A pending proposal is not an accepted debt. Acceptance records the players' stated agreement; it does not transfer or verify gold. Shared records appear separately from personal ledger balances. Shared repayments and amendments are not available in this alpha.
+Either player can propose an obligation in either direction. A pending proposal is not an accepted debt. Acceptance records the players' stated agreement; it does not transfer or verify gold. Shared records appear separately from personal ledger balances. Amendments remain future work.
 
 The recipient can **Decline** before acceptance. The proposer can **Withdraw** before commitment. Both actions require a separate review. A timeout or disconnect never implies decline, cancellation, or payment.
+
+## Payments, settlement, and corrections
+
+The **original agreement proposer** records events in this alpha, regardless of which participant owes the gold. The other participant reviews and accepts each event. A recipient who wants to record a payment should ask the proposer to enter it; there is no automatic payment-request flow.
+
+Select an agreed gold obligation and use **Record payment** for a partial amount or **Settle balance** for its full remaining balance. The latter captures the current amount; a later balance change invalidates the draft. Add an optional note, then **Send for acknowledgment**. The recipient selects the new payment offer and uses **Review / accept**. Review includes the original obligation, the exact prior event history, and the proposed resulting balance.
+
+The recipient includes a payment in its balance when it receives the commitment. The proposer includes it only after observing the recipient's acknowledgment. A lost acknowledgment can temporarily leave different balances; **Retry** resends the retained decision. The proposer cannot create another event until the latest acknowledgment is observed. Pending proposals and local API submission never count as payment.
+
+For a mistake, choose **Correct payment**, explicitly select one confirmed payment, and enter a reason. This proposes a full reversal of that payment, requiring the other participant's acceptance. The original payment, correction, and reason remain visible. Reversing a settlement reopens its amount. Partial reversals, reversing a correction, and reversing the same payment twice are rejected. A correction does not move gold; it records the players' correction to their bookkeeping.
+
+Only one unfinished payment/correction can target an obligation. Every event binds the exact original terms, parent commitment, and full prior acknowledged event chain. Missing or different history rejects the event instead of guessing from the balance. Reaching the 4096-byte message budget or 32 retained-offer limit rejects new work without truncating terms or deleting history.
 
 ## Delivery and interrupted offers
 
