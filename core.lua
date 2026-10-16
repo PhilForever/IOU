@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.3.1"
+IOU.VERSION = "0.3.2"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -133,10 +133,10 @@ end
 function IOU.Add(fields) return mutate(L.Add, fields) end
 function IOU.Pay(id, amount, note) return mutate(L.Pay, id, amount, note or "") end
 function IOU.Settle(id, note) return mutate(L.Settle, id, note or "") end
-function IOU.Reverse(id, eventID, reason) return mutate(L.Reverse, id, eventID, reason or "") end
-function IOU.Amend(id, fields, reason) return mutate(L.Amend, id, fields, reason or "") end
-function IOU.Cancel(id, reason) return mutate(L.Cancel, id, reason or "") end
-function IOU.Restore(id, reason) return mutate(L.Restore, id, reason or "") end
+function IOU.Reverse(id, eventID, reason) return mutate(L.Reverse, id, eventID, reason == nil and "" or reason) end
+function IOU.Amend(id, fields, reason) return mutate(L.Amend, id, fields, reason == nil and "" or reason) end
+function IOU.Cancel(id, reason) return mutate(L.Cancel, id, reason == nil and "" or reason) end
+function IOU.Restore(id, reason) return mutate(L.Restore, id, reason == nil and "" or reason) end
 
 function IOU.Export()
     local ok, err = ready()

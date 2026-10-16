@@ -42,10 +42,12 @@ local function reviewText(offer)
     if not terms then return "This agreement's terms could not be read." end
     local text = {"Proposer: " .. terms.proposer, "Recipient: " .. terms.recipient,
         "", "Debtor: " .. terms.debtor, "Creditor: " .. terms.creditor,
-        "Amount: " .. IOU.Ledger.FormatMoney(terms.amountCopper),
-        "Due: " .. (terms.dueUTC == 0 and "No deadline" or utc("!%Y-%m-%d %H:%M:%S UTC", terms.dueUTC)),
-        "", "Note: " .. (terms.note == "" and "(none)" or terms.note),
-        "", "Status: " .. summary(offer)}
+        "Amount: " .. IOU.Ledger.FormatMoney(terms.amountCopper)}
+    if terms.kind=="GOLD_OBLIGATION" then
+        text[#text+1]="Due: " .. (terms.dueUTC == 0 and "No deadline" or utc("!%Y-%m-%d %H:%M:%S UTC", terms.dueUTC))
+    end
+    text[#text+1]=""; text[#text+1]="Note: " .. (terms.note == "" and "(none)" or terms.note)
+    text[#text+1]=""; text[#text+1]="Status: " .. summary(offer)
     if offer.state == "COMMITTED" then
         text[#text+1] = offer.delivery == "PEER_RECEIPT_OBSERVED"
             and "Peer receipt: their IOU acknowledged this commitment."
@@ -58,12 +60,10 @@ local function reviewText(offer)
     if offer.localClosed then text[#text+1] = "Local review: " .. offer.localCloseReason end
     if IOU.SharedPaymentDetails then text[#text+1] = IOU.SharedPaymentDetails(offer) end
     text[#text+1] = ""
-    text[#text+1] = "Agreement: " .. offer.agreementId
-    text[#text+1] = "Offer: " .. offer.offerId
-    text[#text+1] = ""
     text[#text+1] = "History"
     for _, event in ipairs(offer.history) do
-        text[#text+1] = utc("!%Y-%m-%d %H:%M UTC", event.at) .. " / " .. (event.kind:gsub("_", " "))
+        local label=event.kind:gsub("_", " "):lower():gsub("^%l",string.upper)
+        text[#text+1] = utc("!%Y-%m-%d %H:%M UTC", event.at) .. " / " .. label
     end
     return table.concat(text, "\n")
 end
@@ -95,7 +95,7 @@ function IOU.ShowSharedReview(id, action)
         f.scroll, f.content = scroll(f, 574, 356, 24, -68)
         f.details = font(f.content, 12, 0, 0, 564, "")
         f.explanation = font(f, 12, 24, -443, 594, "", MUTED)
-        f.reasonCaption = font(f, 11, 24, -506, 594, "Reason for local review", MUTED)
+        f.reasonCaption = font(f, 11, 24, -506, 594, "Reason for local review (optional)", MUTED)
         f.reason = edit(f, 584, 28, -525, 256)
         f.status = font(f, 12, 24, -562, 594, "", GOLD)
         f.status:SetHeight(40)
@@ -193,7 +193,15 @@ refresh = function()
     local offers, err = S.List()
     offers = offers or {}
     local enabled = S.IsEnabled()
-    f.status:SetText(literal(f.problem or err or S.GetStatus()))
+    local status=S.GetStatus()
+    if enabled and IOU.SharedWire and IOU.SharedWire.GetStatus then
+        local wireStatus=IOU.SharedWire.GetStatus()
+        local name=S.GetPeer()
+        if wireStatus:sub(1,13)=="Shared peer: " and status=="Sharing with "..name..". "..wireStatus then
+            status="Sharing with "..name..". Each offer needs the other player's acceptance."
+        end
+    end
+    f.status:SetText(literal(f.problem or err or status))
     f.peer:SetEnabled(not enabled); f.target:SetEnabled(not enabled)
     f.enable:SetEnabled(not enabled); f.stop:SetEnabled(enabled); f.propose:SetEnabled(enabled)
     f.page = math.max(1, math.min(f.page or 1, math.max(1, math.ceil(#offers/5))))

@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-local T = {VERSION = "1", PREFIX = "IOU_LINKv1", MAX_BYTES = 240}
+local T = {VERSION = "2", PREFIX = "IOU_LINKv2", MAX_BYTES = 240}
 IOU.Transport = T
 
 -- This is an opt-in link experiment, not an agreement protocol. Nothing here
@@ -8,6 +8,7 @@ local frame, initialized, initError, registration
 local listening, peer, peerKey = false, nil, nil
 local active, lastTest, lastAttempt, serial = nil, nil, nil, 0
 local echoQueue, observations = {}, {}
+local receiveStats = {events=0, peerWhispers=0, recognized=0, wrongChannel=0, wrongPeer=0, invalid=0}
 local responseWindow, responseSeen, responseUnique = nil, {}, 0
 local responseReport = {probes = {}}
 local rateLimitNote
@@ -104,7 +105,10 @@ function T.BuildProbe(id, index)
     if not validID(id) or not plain(index) or type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > 4 then
         return nil, "Invalid probe identifier or index."
     end
-    local header = "P|1|" .. id .. "|" .. index .. "|"
+    -- Keep the entire logged payload ordinary printable text, without WoW's
+    -- pipe markup delimiter. Protocol 1 used pipes and live tests saw no echo;
+    -- whether the client or server transformed those frames is not established.
+    local header = "P " .. T.VERSION .. " " .. id .. " " .. index .. " "
     local body
     if index == 1 then body = "IOU link test"
     elseif index == 2 then body = unicode
@@ -121,7 +125,7 @@ function T.Parse(wire)
     if not plain(wire) or type(wire) ~= "string" or #wire > T.MAX_BYTES then
         return nil, "Invalid message size."
     end
-    local kind, version, id, rawIndex, body = wire:match("^([PE])|([^|]+)|([^|]+)|([1-4])|(.*)$")
+    local kind, version, id, rawIndex, body = wire:match("^([PE]) ([0-9]+) ([A-Za-z0-9_-]+) ([1-4]) (.*)$")
     if not kind or version ~= T.VERSION or not validID(id) then return nil, "Unknown probe format." end
     local index = tonumber(rawIndex)
     local expected = T.BuildProbe(id, index)
@@ -208,20 +212,43 @@ local function short(value)
     return value:gsub("[%z\001-\031\127|]", "?"):sub(1,120)
 end
 
+local function countReceive(field)
+    receiveStats[field] = math.min(9999, receiveStats[field] + 1)
+end
+
+local function observe(reason, wire, channel, sender, target)
+    -- Only registered diagnostic-prefix events reach this helper. Never retain
+    -- payload text, even for malformed traffic; cap both metadata and UI work.
+    local bytes = plain(wire) and type(wire) == "string" and tostring(#wire) or "unavailable"
+    local entry = reason .. "; channel '" .. short(channel) .. "'; sender '" .. short(sender)
+        .. "'; target '" .. short(target) .. "'; payload type "
+        .. (plain(wire) and type(wire) or "secret") .. "; bytes " .. bytes .. "."
+    for _, previous in ipairs(observations) do if previous == entry then return end end
+    if #observations < 6 then observations[#observations + 1] = entry; changed() end
+end
+
 local function receive(_, event, prefix, wire, channel, sender, target)
-    if event ~= "CHAT_MSG_ADDON_LOGGED" or not listening or not plain(prefix) or prefix ~= T.PREFIX
-        or not plain(channel) or channel ~= "WHISPER" then return end
-    local parsed = T.Parse(wire)
-    if not parsed then return end
-    local senderKey = key(sender)
-    if not senderKey or senderKey ~= peerKey then
-        if #observations < 4 then
-            observations[#observations+1] = "Ignored sender '" .. short(sender) .. "', event target '"
-                .. short(target) .. "': did not exactly match the configured peer."
-            changed()
-        end
+    if event ~= "CHAT_MSG_ADDON_LOGGED" or not listening or not plain(prefix) or prefix ~= T.PREFIX then return end
+    countReceive("events")
+    if not plain(channel) or channel ~= "WHISPER" then
+        countReceive("wrongChannel")
+        observe("Ignored diagnostic event: channel is not WHISPER", wire, channel, sender, target)
         return
     end
+    local senderKey = key(sender)
+    if not senderKey or senderKey ~= peerKey then
+        countReceive("wrongPeer")
+        observe("Ignored diagnostic event: sender does not exactly match the configured peer", wire, channel, sender, target)
+        return
+    end
+    countReceive("peerWhispers")
+    local parsed, problem = T.Parse(wire)
+    if not parsed then
+        countReceive("invalid")
+        observe("Ignored diagnostic event: " .. problem, wire, channel, sender, target)
+        return
+    end
+    countReceive("recognized")
     if parsed.kind == "E" then
         if not active or parsed.id ~= active.id then return end
         local probe = active.probes[parsed.index]
@@ -306,6 +333,7 @@ function T.EnableListening(enabled, target)
     if active and key(name) ~= peerKey then finish("cancelled") end
     if key(name) ~= peerKey then
         echoQueue, observations = {}, {}
+        receiveStats = {events=0, peerWhispers=0, recognized=0, wrongChannel=0, wrongPeer=0, invalid=0}
         responseWindow, responseSeen, responseUnique, rateLimitNote = nil, {}, 0, nil
         responseReport = {probes={}}
     end
@@ -396,6 +424,7 @@ function T.GetReport()
         "Channel: logged addon WHISPER / prefix: " .. T.PREFIX,
         "Prefix registration: " .. (registration or "not attempted"),
         "Listening: " .. (listening and "ON (until stopped or reload)" or "OFF"),
+        "Wire format: printable UTF-8 text with space separators; protocol 1 clients are incompatible.",
         "Identity rule: whitespace normalized, ASCII case ignored; hyphens and surnames preserved.",
         "Conservative wire cap: 240 bytes. The actual client maximum is not established by this test.",
         "Unicode sample: " .. unicode,
@@ -449,6 +478,13 @@ function T.GetReport()
             if p then lines[#lines+1] = string.format("Received %d: %d exact bytes; echo API %s; raw sender '%s'; event target '%s'.",
                 i, p.bytes, p.resultText, p.sender, p.eventTarget) end
         end
+    end
+    lines[#lines+1] = string.format("Matching-prefix receive events: %d; exact-peer whispers: %d; recognized fixed frames: %d (counts capped at 9999).",
+        receiveStats.events, receiveStats.peerWhispers, receiveStats.recognized)
+    lines[#lines+1] = string.format("Ignored receive events: wrong channel %d; wrong peer %d; invalid fixed payload %d.",
+        receiveStats.wrongChannel, receiveStats.wrongPeer, receiveStats.invalid)
+    if receiveStats.events == 0 then
+        lines[#lines+1] = "No matching-prefix event observed. This does not identify whether delivery, client filtering, or the other player's setup prevented it."
     end
     for _, observation in ipairs(observations) do lines[#lines+1] = observation end
     lines[#lines+1] = "No ledger data is included. Fixed diagnostic text only. No automatic retries."

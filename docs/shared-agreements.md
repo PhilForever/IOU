@@ -1,6 +1,6 @@
 # Shared gold agreements (experimental)
 
-Version **0.3.1** includes payments and corrections in the opt-in agreement view under **Shared** or `/iou shared`, and fixes an overbroad connection check from 0.3.0. Both characters should use 0.3.1; existing shared gold agreements are retained. The addon uses the normal Release channel, while Shared remains experimental: automated two-client simulations cover the flow, and actual Forever addon-message delivery and rendering remain unverified.
+Version **0.3.2** includes payments and corrections under **Shared** or `/iou shared`, fixes window/input stacking, and accepts optional reasons. Existing shared gold agreements are retained. The addon uses the normal Release channel. Live 0.3.1 screenshots show an acknowledged agreement and a declined payment; complete repayments/corrections, focus, and shared persistence still need client verification.
 
 ## Propose and accept
 
@@ -21,7 +21,7 @@ Select an agreed gold obligation and use **Record payment** for a partial amount
 
 The recipient includes a payment in its balance when it receives the commitment. The proposer includes it only after observing the recipient's acknowledgment. A lost acknowledgment can temporarily leave different balances; **Retry** resends the retained decision. The proposer cannot create another event until the latest acknowledgment is observed. Pending proposals and local API submission never count as payment.
 
-For a mistake, choose **Correct payment**, explicitly select one confirmed payment, and enter a reason. This proposes a full reversal of that payment, requiring the other participant's acceptance. The original payment, correction, and reason remain visible. Reversing a settlement reopens its amount. Partial reversals, reversing a correction, and reversing the same payment twice are rejected. A correction does not move gold; it records the players' correction to their bookkeeping.
+For a mistake, choose **Correct payment**, explicitly select one confirmed payment, and optionally enter a reason. Blank text becomes "No reason provided" in the exact terms the other player reviews. This proposes a full reversal requiring their acceptance. The original payment and correction remain visible. Reversing a settlement reopens its amount. Partial reversals, correction of a correction, and reversing the same payment twice are rejected. A correction records bookkeeping; it does not move gold.
 
 Only one unfinished payment/correction can target an obligation. Every event binds the exact original terms, parent commitment, and full prior acknowledged event chain. Missing or different history rejects the event instead of guessing from the balance. Reaching the 4096-byte message budget or 32 retained-offer limit rejects new work without truncating terms or deleting history.
 
@@ -31,7 +31,7 @@ Only one unfinished payment/correction can target an obligation. Every event bin
 
 Closing the Shared window, pressing Escape in its name box, `/iou shared off`, or reloading disables sharing. Unfinished handshakes become **Paused**. Queued traffic is discarded, and nothing resumes automatically on the next login. Agreed records remain agreed and retain their history.
 
-An old offer may have progressed further on the other player's client. Reconcile it with them before replacing it. With sharing off, select a paused offer and choose **Review paused offer**. Read its retained terms, enter a reason, and choose **Mark reviewed locally**. This preserves the old record and a local review marker. It does not cancel or settle the other player's record. Delayed messages cannot reopen the locally reviewed offer.
+An old offer may have progressed further on the other player's client. Reconcile it with them before replacing it. With sharing off, select a paused offer and choose **Review paused offer**. Read its retained terms, optionally enter a reason, and choose **Mark reviewed locally**. This preserves the old record and a local review marker. It does not cancel or settle the other player's record. Delayed messages cannot reopen the locally reviewed offer.
 
 An unresolved paused offer blocks a replacement proposal with that same player. After both players have reconciled their old records, a fresh proposal uses fresh identifiers and requires fresh acceptance. Records are retained; reaching the 32-offer storage cap rejects new offers rather than evicting history.
 

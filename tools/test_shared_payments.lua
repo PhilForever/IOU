@@ -119,11 +119,11 @@ test("partial and final shared repayments settle exactly and reject overpayment 
     reject(function() return P.BuildPayment(a.store,w.parent,1,"Overpaid") end)
 end)
 
-test("full shared corrections retain the payment and need new mutual consent and a reason exactly once",function()
+test("full shared corrections retain the payment and need new mutual consent exactly once",function()
     local w=sim(); local a,b=w.a,w.b
     local payment=w.payment(7000,"Incorrect amount recorded"); w.finish(payment)
     local before=copy(a.store)
-    reject(function() return P.BuildCorrection(a.store,w.parent,payment," ") end)
+    reject(function() return P.BuildCorrection(a.store,w.parent,payment,false) end)
     reject(function() return P.BuildCorrection(a.store,w.parent,"missing","Reason") end)
     assert(same(before,a.store))
     local terms=assert(P.BuildCorrection(a.store,w.parent,payment,"Both agree the record was wrong"))
@@ -139,6 +139,30 @@ test("full shared corrections retain the payment and need new mutual consent and
     reject(function() return P.BuildCorrection(a.store,w.parent,correction,"Reverse reversal") end)
     w.finish(w.payment(10000,"Replacement correct record"))
     assert(P.View(a.store,w.parent).state=="SETTLED")
+end)
+
+test("omitted shared correction reasons are explicit consent terms while malformed text still rejects atomically",function()
+    local w=sim(); local a,b=w.a,w.b
+    local payment=w.payment(7000,"Recorded amount"); w.finish(payment)
+    local before=copy(a.store)
+    for _,input in ipairs({{}, {reason=""}, {reason="   "}}) do
+        local terms=assert(P.BuildCorrection(a.store,w.parent,payment,input.reason))
+        assert(terms.note=="No reason provided")
+        assert(C.ParseTerms(assert(C.CanonicalTerms(terms))).note==terms.note)
+    end
+    for _,reason in ipairs({false, 42, {}, string.rep(" ",513), "bad\000reason", "bad\treason", "bad|reason", string.char(255)}) do
+        reject(function() return P.BuildCorrection(a.store,w.parent,payment,reason) end)
+    end
+    assert(same(before,a.store))
+    local terms=assert(P.BuildCorrection(a.store,w.parent,payment,nil))
+    local blank=copy(terms); blank.note=""
+    reject(function() return C.ValidateTerms(blank) end)
+    local correction=w.offer(terms)
+    assert(C.ParseTerms(b.store.offers[correction].terms).note=="No reason provided")
+    assert(P.View(a.store,w.parent).remainingCopper==3000)
+    w.finish(correction)
+    assert(P.View(a.store,w.parent).remainingCopper==10000)
+    assert(P.View(b.store,w.parent).events[2].note=="No reason provided")
 end)
 
 test("the recipient cannot sequence financial events and a second in-flight event fails validation atomically",function()

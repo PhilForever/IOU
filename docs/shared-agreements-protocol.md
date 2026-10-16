@@ -64,7 +64,7 @@ Event terms use `protocol=2`, `kind=GOLD_PAYMENT` or `GOLD_CORRECTION`, and the 
 
 The parent and latest event must be acknowledged before the proposer can initiate another event. A recipient includes an event in the derived balance on COMMIT; a proposer includes it only upon the exact ACK. A missing ACK may temporarily leave different displayed balances, with further proposer events blocked. Duplicate delivery reuses retained responses and never applies an amount twice. Only one unresolved child may target a parent; a paused child blocks a successor until explicitly reviewed locally after reconciliation.
 
-A payment is positive integer copper no greater than the remaining amount. A correction requires a nonblank reason, targets one preceding confirmed and unreversed payment by offer ID, and reverses its full amount. Partial reversal, double reversal, and correction of a correction are rejected. Correcting a settlement reopens its amount. The service validates this financial graph on load and before any persistence, while personal totals and backup formats stay separate.
+A payment is positive integer copper no greater than the remaining amount. A correction's stored terms contain a nonblank reason; from 0.3.2, blank user input becomes "No reason provided" before consent. It targets one preceding confirmed and unreversed payment by offer ID and reverses its full amount. Partial reversal, double reversal, and correction of a correction are rejected. Correcting a settlement reopens its amount. The service validates this financial graph on load and before any persistence, while personal totals and backup formats stay separate.
 
 ## Logical message schema
 

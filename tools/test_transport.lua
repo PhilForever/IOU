@@ -224,10 +224,12 @@ test("four fixed probes and echoes preserve payloads within the encoded byte cei
     local session=a:start(b.name)
     local T=a.transport
     equal(T.MAX_BYTES,240)
+    equal(T.VERSION,"2"); equal(T.PREFIX,"IOU_LINKv2")
     local hasUTF8=false
     for index=1,4 do
         local wire=assert(T.BuildProbe(session.id,index))
         assert(#wire<=T.MAX_BYTES)
+        assert(not wire:find("[%z\001-\031\127|]"),"logged probe contains controls or pipe markup")
         if index==3 then equal(#wire,239) end
         if index==4 then equal(#wire,240) end
         local parsed=assert(T.Parse(wire))
@@ -248,9 +250,11 @@ test("malformed, unknown and oversized frames fail closed without throwing", fun
     local session=a:start(b.name)
     local T=a.transport
     local wire=assert(T.BuildProbe(session.id,1))
-    local bad={"", "P", "E", "P|1", "P|1|", "Q"..wire:sub(2),
-        wire:gsub("^P|1|","P|9|"), "P|1|x|0|x", "P|1|x|5|x",
-        "P|1|x|1|x", "P|1|x|1|x|y", wire.."\000", string.rep("P",1048576)}
+    local bad={"", "P", "E", "P 2", "P 2 ", "Q"..wire:sub(2),
+        wire:gsub("^P 2 ","P 9 "), "P 2 x 0 x", "P 2 x 5 x",
+        "P 2 x 1 x", "P 2 x 1 x y", "P|1|x|1|IOU link test",
+        "P 02 x 1 IOU link test", "P 2 x 01 IOU link test",
+        wire.."\000", string.rep("P",1048576)}
     for _, value in ipairs(bad) do reject(function() return T.Parse(value) end) end
     reject(function() return T.Parse(nil) end)
     reject(function() return T.Parse(false) end)
@@ -294,6 +298,88 @@ test("two independent clients complete only through the logged whisper delivery 
         assert(#packet.wire<=240)
     end
     local count=#sim.sent; sim:advance(120); equal(#sim.sent,count)
+    sim:unchanged()
+end)
+
+test("diagnostic protocol two stays exact through a transport that excludes pipe markup", function()
+    local sim,a,b=pair()
+    sim.autoDeliver=false
+    b:listen(a.name)
+    local session=a:start(b.name)
+    for _=1,120 do
+        sim:advance(0.1)
+        local pending=sim.queue; sim.queue={}
+        for _,packet in ipairs(pending) do
+            -- This models one possible logged-text filter, not a proven claim
+            -- about the live client. Every generated frame must survive it.
+            local filtered=packet.wire:gsub("|.","")
+            equal(filtered,packet.wire)
+            sim:deliver(packet,nil,{wire=filtered})
+        end
+    end
+    equal(session.state,"complete"); equal(echoed(session),4)
+    assert(a.transport.GetReport():find("recognized fixed frames: 4",1,true))
+    assert(b.transport.GetReport():find("recognized fixed frames: 4",1,true))
+    sim:unchanged()
+end)
+
+test("receive diagnostics distinguish no event from rejected peer channel and fixed payload", function()
+    local sim,a,b=pair()
+    b:listen(a.name)
+    local T=b.transport
+    local wire=assert(T.BuildProbe("observations",1))
+    local report=T.GetReport()
+    assert(report:find("Matching-prefix receive events: 0",1,true))
+    assert(report:find("No matching-prefix event observed",1,true))
+    b:event("OTHER_PREFIX",wire,"WHISPER",a.name)
+    equal(#sim.sent,0)
+    assert(T.GetReport():find("Matching-prefix receive events: 0",1,true))
+    b:event(T.PREFIX,wire,"PARTY",a.name)
+    b:event(T.PREFIX,wire,"WHISPER",a.name.." Other")
+    local private="PRIVATE PAYLOAD TEXT THAT MUST NOT APPEAR IN REPORTS"
+    b:event(T.PREFIX,private,"WHISPER",a.name)
+    report=T.GetReport()
+    assert(report:find("Matching-prefix receive events: 3; exact-peer whispers: 1; recognized fixed frames: 0",1,true))
+    assert(report:find("wrong channel 1; wrong peer 1; invalid fixed payload 1",1,true))
+    assert(report:find("channel is not WHISPER",1,true))
+    assert(report:find("sender does not exactly match the configured peer",1,true))
+    assert(report:find("Unknown probe format",1,true))
+    assert(not report:find(private,1,true),"diagnostics retained unrecognized payload text")
+    sim:advance(10); equal(#sim.sent,0); sim:unchanged()
+end)
+
+test("legacy or modified fixed payloads are observable but never echoed", function()
+    local sim,a,b=pair()
+    b:listen(a.name)
+    local T=b.transport
+    b:event(T.PREFIX,"P|1|legacy|1|IOU link test","WHISPER",a.name)
+    b:event(T.PREFIX,assert(T.BuildProbe("current",1)).." changed","WHISPER",a.name)
+    local report=T.GetReport()
+    assert(report:find("invalid fixed payload 2",1,true))
+    assert(report:find("Unknown probe format",1,true))
+    assert(report:find("Probe payload is not recognized",1,true))
+    assert(report:find("protocol 1 clients are incompatible",1,true))
+    sim:advance(10); equal(#sim.sent,0); equal(b:activeDrivers(),0)
+    sim:unchanged()
+end)
+
+test("malformed receive metadata stays bounded and cannot flood UI refresh callbacks", function()
+    local changes=0
+    local sim=simulation()
+    local a=sim:client("Amber Stone")
+    local b=sim:client("Birch Vale",{callback=function() changes=changes+1 end})
+    b:listen(a.name)
+    local before=changes
+    for index=1,12000 do
+        b:event(b.transport.PREFIX,"not fixed "..index,"WHISPER",a.name,"Target "..index)
+    end
+    local report=b.transport.GetReport()
+    assert(report:find("Matching-prefix receive events: 9999",1,true))
+    assert(report:find("invalid fixed payload 9999",1,true))
+    assert(not report:find("Target 7",1,true),"retained more than six observation records")
+    assert(#report<=8000)
+    equal(changes-before,6,"malformed flood triggered more than bounded metadata refreshes")
+    sim:advance(10); equal(#sim.sent,0); equal(b:activeDrivers(),0)
     sim:unchanged()
 end)
 

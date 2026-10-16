@@ -235,9 +235,7 @@ test("timestamp and audit notes are bounded and atomic", function()
     rejected(db, function() return L.Pay(db, e.id, 1, "bad\000note", 101) end)
     rejected(db, function() return L.Pay(db, e.id, 1, "", -1) end)
     local payment = assert(L.Pay(db, e.id, 1, "ok\twith\nnewlines", 101))
-    rejected(db, function() return L.Reverse(db, e.id, payment.id, nil, 102) end)
-    rejected(db, function() return L.Reverse(db, e.id, payment.id, "", 102) end)
-    rejected(db, function() return L.Reverse(db, e.id, payment.id, " \t\n", 102) end)
+    rejected(db, function() return L.Reverse(db, e.id, payment.id, false, 102) end)
     rejected(db, function() return L.Reverse(db, e.id, payment.id, string.rep("x", 2001), 102) end)
     rejected(db, function() return L.Reverse(db, e.id, payment.id, "", -1) end)
 end)
@@ -472,9 +470,9 @@ test("amendments preserve financial terms and record independent metadata snapsh
     assert(L.Validate(db))
 end)
 
-test("invalid amendments are atomic and require a meaningful correction reason", function()
+test("invalid amendments and malformed optional reasons are atomic", function()
     local db=L.New(); local e=entry(db,{due=500})
-    for _,reason in ipairs({""," \t\n",string.rep("x",2001),"bad\000reason"}) do
+    for _,reason in ipairs({false,string.rep("x",2001),"bad\000reason"}) do
         rejected(db,function() return L.Amend(db,e.id,metadata(e,{note="changed"}),reason,101) end)
     end
     rejected(db,function() return L.Amend(db,e.id,metadata(e),"No changes",101) end)
@@ -523,20 +521,40 @@ test("cancellation preserves balance and moves obligations into history until re
     assert(L.Validate(db)); assert(L.Pay(db,e.id,10,"after restore",105))
 end)
 
-test("cancellation and restoration enforce lifecycle and nonblank reasons atomically", function()
+test("cancellation and restoration enforce lifecycle and bounded optional reasons atomically", function()
     local db=L.New(); local e=entry(db,{amount=10})
     rejected(db,function() return L.Restore(db,e.id,"Not cancelled",101) end)
-    for _,reason in ipairs({""," \t\n",string.rep("x",2001)}) do
+    for _,reason in ipairs({false,string.rep("x",2001)}) do
         rejected(db,function() return L.Cancel(db,e.id,reason,101) end)
     end
     rejected(db,function() return L.Cancel(db,999,"Missing",101) end)
     rejected(db,function() return L.Cancel(db,e.id,"Bad clock",-1) end)
     assert(L.Cancel(db,e.id,"Wrong entry",101))
-    rejected(db,function() return L.Restore(db,e.id,"",102) end)
+    rejected(db,function() return L.Restore(db,e.id,false,102) end)
     rejected(db,function() return L.Restore(db,e.id,"Bad clock",-1) end)
     assert(L.Restore(db,e.id,"Reconsidered",102)); assert(L.Settle(db,e.id,"Paid",103))
     rejected(db,function() return L.Cancel(db,e.id,"Already paid",104) end)
     equal(L.Status(e),"settled")
+end)
+
+test("omitted personal audit reasons retain valid defaulted history and export round trips", function()
+    for _,reason in ipairs({""," \t\n"}) do
+        local db=L.New(); local e=entry(db,{amount=100})
+        local payment=assert(L.Pay(db,e.id,25,"",101))
+        equal(assert(L.Reverse(db,e.id,payment.id,reason,102)).note,"No reason provided")
+        equal(assert(L.Amend(db,e.id,metadata(e,{note="changed"}),reason,103)).note,"No reason provided")
+        equal(assert(L.Cancel(db,e.id,reason,104)).note,"No reason provided")
+        equal(assert(L.Restore(db,e.id,reason,105)).note,"No reason provided")
+        assert(L.Validate(db)); equal(L.Balance(e),100)
+        assert(same(assert(C.Import(assert(C.Export(db)))),db))
+    end
+    local db=L.New(); local e=entry(db,{amount=100})
+    local payment=assert(L.Pay(db,e.id,25,"",101))
+    equal(assert(L.Reverse(db,e.id,payment.id,nil,102)).note,"No reason provided")
+    equal(assert(L.Amend(db,e.id,metadata(e,{note="changed"}),nil,103)).note,"No reason provided")
+    equal(assert(L.Cancel(db,e.id,nil,104)).note,"No reason provided")
+    equal(assert(L.Restore(db,e.id,nil,105)).note,"No reason provided")
+    assert(L.Validate(db))
 end)
 
 test("validation rejects forged cancellation histories and mutations while cancelled", function()
@@ -712,17 +730,18 @@ local function coreSession(config)
     env.print=function(message) state.messages[#state.messages+1]=message end
     local methods={}
     local function object(kind,parent)
-        local frame={kind=kind,parent=parent,events={},scripts={},shown=true,
-            enabled=true,text="",width=100,height=26,verticalScroll=0}
+        local frame={kind=kind,parent=parent,events={},scripts={},handlers={},scriptHooks={},shown=true,
+            enabled=true,text="",width=100,height=26,verticalScroll=0,
+            frameLevel=parent and parent:GetFrameLevel()+1 or 0}
         setmetatable(frame,{__index=methods})
         state.objects[#state.objects+1]=frame
         return frame
     end
     local noop={"SetFont","SetJustifyH","SetJustifyV","SetTextColor",
-        "SetBackdrop","SetBackdropColor","SetBackdropBorderColor","SetAutoFocus",
+        "SetBackdrop","SetBackdropBorderColor","SetAutoFocus",
         "SetMaxLetters","SetNumeric","SetMultiLine","SetFontObject","SetTextInsets",
-        "SetFrameStrata","SetFrameLevel","SetMovable","SetClampedToScreen",
-        "EnableMouse","RegisterForDrag","StartMoving","StopMovingOrSizing",
+        "SetMovable","SetClampedToScreen",
+        "RegisterForDrag","StartMoving","StopMovingOrSizing",
         "SetAllPoints","SetMaxLines","SetWordWrap","SetMaxBytes"}
     for _, name in ipairs(noop) do methods[name]=function() end end
     function methods:SetPoint(...) self.point={...} end
@@ -739,7 +758,40 @@ local function coreSession(config)
     function methods:RegisterEvent(event) self.events[event]=true end
     function methods:UnregisterEvent(event) self.events[event]=nil end
     function methods:UnregisterAllEvents() self.events={} end
-    function methods:SetScript(event, fn) self.scripts[event]=fn end
+    local function script(frame,event)
+        if not frame.handlers[event] and not frame.scriptHooks[event] then frame.scripts[event]=nil; return end
+        frame.scripts[event]=function(self,...)
+            if self.handlers[event] then self.handlers[event](self,...) end
+            for _,hook in ipairs(self.scriptHooks[event] or {}) do hook(self,...) end
+        end
+    end
+    function methods:SetScript(event, fn) self.handlers[event]=fn; script(self,event) end
+    function methods:HookScript(event, fn)
+        self.scriptHooks[event]=self.scriptHooks[event] or {}
+        self.scriptHooks[event][#self.scriptHooks[event]+1]=fn; script(self,event)
+    end
+    function methods:GetParent() return self.parent end
+    function methods:GetChildren()
+        local children={}
+        for _,candidate in ipairs(state.frames) do
+            if candidate.parent==self then children[#children+1]=candidate end
+        end
+        return unpack(children)
+    end
+    function methods:SetFrameStrata(value) self.frameStrata=value end
+    function methods:GetFrameStrata() return self.frameStrata or (self.parent and self.parent:GetFrameStrata()) or "MEDIUM" end
+    function methods:SetFrameLevel(value)
+        local delta=value-self.frameLevel
+        self.frameLevel=value
+        -- Exercise both native parent-propagating levels and independent
+        -- descendants: stacking must not depend on either side effect.
+        if not config.independentFrameLevels then
+            for _,child in ipairs({self:GetChildren()}) do child:SetFrameLevel(child:GetFrameLevel()+delta) end
+        end
+    end
+    function methods:SetToplevel(value) self.toplevel=value end
+    function methods:EnableMouse(value) self.mouseEnabled=value end
+    function methods:SetBackdropColor(...) self.backdropColor={...} end
     function methods:SetSize(w,h) self.width,self.height=w,h end
     function methods:SetWidth(w) self.width=w end
     function methods:SetHeight(h) self.height=h end
@@ -752,17 +804,29 @@ local function coreSession(config)
     function methods:GetText() return self.text end
     function methods:SetEnabled(value) self.enabled=value end
     function methods:Show()
+        local wasShown=self.shown
         self.shown=true
-        if self.scripts.OnShow then self.scripts.OnShow(self) end
+        if not wasShown and self.scripts.OnShow then self.scripts.OnShow(self) end
     end
     function methods:Hide()
         local wasShown=self.shown
         self.shown=false
         if wasShown and self.scripts.OnHide then self.scripts.OnHide(self) end
+        if wasShown then
+            local function hideDescendants(parent)
+                for _,child in ipairs({parent:GetChildren()}) do
+                    if child.shown then
+                        if child.scripts.OnHide then child.scripts.OnHide(child) end
+                        hideDescendants(child)
+                    end
+                end
+            end
+            hideDescendants(self)
+        end
     end
     function methods:SetShown(value) if value then self:Show() else self:Hide() end end
     function methods:IsShown() return self.shown end
-    function methods:GetFrameLevel() return 1 end
+    function methods:GetFrameLevel() return self.frameLevel end
     function methods:SetFocus()
         if state.focused==self then return end
         local previous=state.focused
@@ -864,7 +928,13 @@ local function coreSession(config)
     state.click=function(button,mouse)
         assert(button.enabled and button.shown,"button disabled or hidden")
         assert(button.scripts.OnClick,"button has no click handler")
+        if button.scripts.OnMouseDown then button.scripts.OnMouseDown(button,mouse or "LeftButton") end
         return button.scripts.OnClick(button,mouse)
+    end
+    state.mouseDown=function(frame,mouse)
+        assert(frame.enabled and frame.shown,"frame disabled or hidden")
+        assert(frame.scripts.OnMouseDown,"frame has no mouse handler")
+        return frame.scripts.OnMouseDown(frame,mouse or "LeftButton")
     end
     state.advance=function(seconds)
         for _=1,math.ceil(seconds*10) do
@@ -1367,7 +1437,7 @@ test("UI rejects stale payment form after ledger replacement", function()
     assert(action.error:GetText():find("ledger changed",1,true))
 end)
 
-test("UI validates due dates and requires reasons for metadata corrections", function()
+test("UI validates due dates while metadata correction reasons remain optional", function()
     local state=coreSession({ui=true}); local api=state.api
     api.ShowAdd(); local ui,form=api.UI,api.UI.add
     form.player:SetText("Original"); form.money:Fill(100)
@@ -1380,35 +1450,35 @@ test("UI validates due dates and requires reasons for metadata corrections", fun
     state.click(ui.edit); local edit=ui.editForm
     equal(edit.player:GetText(),"Original"); equal(edit.due:GetText(),"2028-02-29")
     edit.player:SetText("Corrected"); edit.note:SetText("Quest split")
-    state.click(edit.save); equal(api.GetLedger().entries[1].player,"Original")
-    assert(edit.error:GetText()~="")
-    edit.reason:SetText("Correct character"); edit.due:SetText("2028-03-01"); state.click(edit.save)
+    edit.due:SetText("2028-03-01"); state.click(edit.save)
     e=api.GetLedger().entries[1]
     equal(e.player,"Corrected"); equal(e.note,"Quest split"); equal(e.amount,100)
     equal(api.FormatDueDate(e.due),"2028-03-01"); equal(#e.events,1)
     equal(e.events[1].type,"amendment"); equal(e.events[1].before.player,"Original")
+    equal(e.events[1].note,"No reason provided")
     equal(e.events[1].after.player,"Corrected"); assert(not edit:IsShown())
     equal(ui.peer:GetText(),"Corrected")
 end)
 
-test("UI cancellation and restoration keep balances and expose required reasons", function()
+test("UI cancellation and restoration keep balances with optional reasons", function()
     local state=coreSession({ui=true}); local api=state.api
     local e=assert(api.Add({player="Friend",direction="owed",kind="money",amount=100,label="",note=""}))
     assert(api.Pay(e.id,25,"part")); api.Toggle(); local ui=api.UI
     state.click(ui.cancel); local action=ui.action
     equal(action.mode,"cancel"); assert(not action.moneyGroup:IsShown()); assert(not action.unitsGroup:IsShown())
-    state.click(action.confirm); equal(#api.GetLedger().entries[1].events,1)
-    assert(action.error:GetText()~="")
-    action.note:SetText("Wrong agreement"); state.click(action.confirm)
+    equal(action.noteCaption:GetText(),"Reason (optional)")
+    state.click(action.confirm); equal(#api.GetLedger().entries[1].events,2)
+    equal(api.GetLedger().entries[1].events[2].note,"No reason provided")
     equal(ui.tab,"history"); equal(ui.selected,e.id); equal(ui.balance:GetText(),"0g 00s 75c")
     equal(L.Status(api.GetLedger().entries[1]),"cancelled")
     assert(not ui.pay.enabled and not ui.settle.enabled and not ui.edit.enabled)
     equal(ui.cancel:GetText(),"Restore IOU"); equal(ui.cards[1].value:GetText(),"0g 00s 00c")
     state.click(ui.cancel); equal(action.mode,"restore")
-    action.note:SetText("Agreed to keep"); state.click(action.confirm)
+    state.click(action.confirm)
     equal(ui.tab,"owed"); equal(ui.selected,e.id); equal(L.Balance(api.GetLedger().entries[1]),75)
     equal(ui.cancel:GetText(),"Cancel IOU"); assert(ui.pay.enabled and ui.edit.enabled)
     equal(#api.GetLedger().entries[1].events,3)
+    equal(api.GetLedger().entries[1].events[3].note,"No reason provided")
 end)
 
 test("UI type, search and sort controls keep rows and totals consistent", function()
@@ -1885,7 +1955,84 @@ test("corrupt shared storage is left untouched while normal personal ledger acti
     end
 end)
 
-test("shared paused review requires a reason and records only a local decision while disconnected", function()
+test("addon windows keep complete foreground trees above underlying controls without level growth", function()
+    for _,independent in ipairs({false,true}) do
+        local state=coreSession({ui=true,shared=true,independentFrameLevels=independent})
+        local api=state.api
+        api.Toggle(); local main=api.UI.main
+        local nativeChild=state.env.CreateFrame("Frame",nil,main)
+        nativeChild:SetFrameLevel(main:GetFrameLevel()+50)
+        api.ShowShared("Remote Peer"); local board=api.UI.shared
+        state.click(board.enable); state.click(board.propose)
+        local form=api.UI.sharedForm
+        local function highest(frame)
+            local level=frame:GetFrameLevel()
+            for _,child in ipairs({frame:GetChildren()}) do level=math.max(level,highest(child)) end
+            return level
+        end
+        local function above(front,back)
+            equal(front:GetFrameStrata(),"DIALOG"); equal(back:GetFrameStrata(),"DIALOG")
+            assert(front:GetFrameLevel()>highest(back),"foreground background fell below another window's children")
+            equal(front.backdropColor[4],1,"foreground window must obscure underlying text")
+            assert(front.toplevel,"window is not raised by native mouse interaction")
+        end
+        above(board,main); above(form,board)
+        state.mouseDown(board); above(board,form)
+        state.mouseDown(api.UI.search); assert(api.UI.search:HasFocus()); above(main,board)
+        state.mouseDown(form.money[1]); assert(form.money[1]:HasFocus())
+        assert(not api.UI.search:HasFocus()); above(form,main)
+        local initialTime=state.now
+        for _=1,100 do
+            state.mouseDown(api.UI.search); state.mouseDown(form.money[2])
+            above(form,main)
+        end
+        equal(state.now,initialTime,"focus required timer advancement")
+        assert(highest(form)<300,"repeated focus grew frame levels without bound")
+        main:Hide(); main:Show(); above(main,form)
+        assert(not form.money[2]:HasFocus(),"background field kept keyboard focus")
+        form:Hide(); form:Show(); above(form,main)
+        board:Hide()
+    end
+end)
+
+test("single-line and blank multiline clicks focus immediately and hidden fields release keyboard input", function()
+    local state=coreSession({ui=true,connection=true}); local api=state.api
+    api.ShowAdd(); local form=api.UI.add
+    local start=state.now
+    for _,box in ipairs({form.player,form.due,form.money[1],form.money[2],form.money[3],form.note}) do
+        state.mouseDown(box)
+        assert(box:HasFocus(),"clicked field did not take focus synchronously")
+        for _,other in ipairs(state.frames) do
+            if other~=box and other.kind=="EditBox" then assert(not other:HasFocus(),"two fields had keyboard focus") end
+        end
+        equal(state.now,start)
+    end
+    local sf=form.note:GetParent(); local shell=sf:GetParent()
+    form.note:ClearFocus(); state.mouseDown(sf); assert(form.note:HasFocus())
+    form.note:ClearFocus(); state.mouseDown(shell); assert(form.note:HasFocus())
+    form:Hide(); assert(not form.note:HasFocus(),"hidden multiline box retained keyboard focus")
+    api.ShowConnectionTest("Remote Peer"); local connection=api.UI.connection
+    state.mouseDown(connection.peer); assert(connection.peer:HasFocus())
+    state.click(connection.copy); assert(connection.box:HasFocus() and connection.box.highlighted)
+    state.advance(2)
+    assert(connection.box:HasFocus() and connection.box.highlighted,"background refresh cleared report selection")
+    connection:Hide(); assert(not connection.box:HasFocus())
+end)
+
+test("malformed false reasons are not converted into omitted reasons by core APIs", function()
+    local state=coreSession(); local api=state.api
+    assert(api.Initialize())
+    local e=assert(api.Add({player="Peer",direction="owed",kind="money",amount=100,label="",note=""}))
+    local payment=assert(api.Pay(e.id,25,""))
+    rejected(api.GetLedger(),function() return api.Reverse(e.id,payment.id,false) end)
+    rejected(api.GetLedger(),function() return api.Amend(e.id,metadata(e,{note="Changed"}),false) end)
+    rejected(api.GetLedger(),function() return api.Cancel(e.id,false) end)
+    assert(api.Cancel(e.id,nil))
+    rejected(api.GetLedger(),function() return api.Restore(e.id,false) end)
+    equal(assert(api.Restore(e.id,nil)).note,"No reason provided")
+end)
+
+test("shared paused review accepts an omitted reason and records only a local decision while disconnected", function()
     local state=coreSession({ui=true,shared=true}); local api=state.api
     api.ShowShared("Remote Peer"); local board=api.UI.shared
     state.click(board.enable)
@@ -1900,13 +2047,9 @@ test("shared paused review requires a reason and records only a local decision w
     assert(review.explanation:GetText():find("local review",1,true))
     local before=copy(api.SharedService.GetStore())
     state.click(review.confirm)
-    assert(review.status:GetText()~="")
-    assert(not api.SharedService.GetOffer("remote-offer").localClosed)
-    review.reason:SetText("Reconciled with the other player; use a fresh proposal")
-    state.click(review.confirm)
     local offer=api.SharedService.GetOffer("remote-offer")
     assert(offer.localClosed); equal(offer.state,"PAUSED")
-    assert(offer.localCloseReason:find("Reconciled",1,true))
+    equal(offer.localCloseReason,"No reason provided")
     assert(same(api.SharedService.GetStore(),before),"local review changed shared protocol history")
     equal(#api.GetLedger().entries,0); equal(#state.transportSent,0)
     assert(not board.closePaused.enabled)

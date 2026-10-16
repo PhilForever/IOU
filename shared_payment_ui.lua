@@ -3,6 +3,17 @@ local UI, S, C = IOU.UI, IOU.SharedService, IOU.SharedCodec
 local H = UI.Helpers
 local GOLD, MUTED = {0.88,0.73,0.42}, {0.65,0.66,0.63}
 local function money(value) return IOU.Ledger.FormatMoney(value) end
+local function reference(id)
+    local number=type(id)=="string" and id:match("%-(%d+)$")
+    return number and "#"..number or id
+end
+local function eventState(event)
+    if event.localClosed then return "Paused; reviewed locally" end
+    local labels={OFFER_OPEN="Waiting for acceptance",OFFER_RECEIVED="Needs review",
+        ACCEPT_PENDING="Waiting for commitment",DECLINE_PENDING="Decline pending",
+        COMMITTED="Agreed",DECLINED="Declined",WITHDRAWN="Withdrawn",PAUSED="Paused"}
+    return labels[event.state] or event.state
+end
 local function due(stamp)
     if stamp==0 then return "No deadline" end
     local ok,value=pcall(date,"!%Y-%m-%d %H:%M:%S UTC",stamp)
@@ -32,29 +43,26 @@ function IOU.SharedPaymentDetails(offer)
     local text = {"", "Shared gold balance"}
     if view then
         if view.confirmed then
-            text[#text+1] = "Original: " .. money(view.originalCopper) .. " / Acknowledged paid: " .. money(view.paidCopper)
-            text[#text+1] = "Remaining on this client: " .. money(view.remainingCopper) .. " / " .. view.state
+            text[#text+1] = "Original: " .. money(view.originalCopper) .. " / Paid: " .. money(view.paidCopper)
+            text[#text+1] = "Remaining: " .. money(view.remainingCopper) .. (view.remainingCopper==0 and " (settled)" or "")
         else
-            text[#text+1]="Proposed amount: " .. money(view.originalCopper)
-            text[#text+1]="No confirmed shared balance yet. The original commitment is not yet acknowledged on this client."
+            text[#text+1]="No confirmed shared balance yet."
         end
-        if view.blockReason then text[#text+1]=view.blockReason end
-        text[#text+1]="The proposer applies a payment after peer acknowledgment; the recipient applies it on commitment. A missing acknowledgment can temporarily leave different displayed balances."
+        if view.awaitingAck then text[#text+1]="Latest payment awaits peer acknowledgment; it is not included in your balance yet."
+        elseif view.pendingOfferId then text[#text+1]="An unfinished payment or correction needs review before another can be recorded." end
     else text[#text+1]=err end
     if terms.kind == "GOLD_OBLIGATION" then
-        text[#text+1]=""
-        text[#text+1]="Payment and correction history"
+        if view and #view.events>0 then text[#text+1]=""; text[#text+1]="Payment and correction history" end
         for _, event in ipairs(view and view.events or {}) do
-            text[#text+1]=(event.kind=="GOLD_PAYMENT" and "Payment " or "Correction ") .. event.offerId .. ": " .. money(event.amountCopper)
-            text[#text+1]=event.state .. (event.effective and " / included in balance" or " / not included in balance")
-                .. (event.reversed and " / reversed" or "") .. (event.localClosed and " / reviewed locally" or "")
-            if event.reversesId ~= "" then text[#text+1]="Reverses payment: " .. event.reversesId end
+            text[#text+1]=(event.kind=="GOLD_PAYMENT" and "Payment " or "Correction ") .. reference(event.offerId) .. ": " .. money(event.amountCopper)
+            text[#text+1]=eventState(event) .. (event.effective and " / included in balance" or " / not included in balance")
+                .. (event.reversed and " / reversed" or "")
+            if event.reversesId ~= "" then text[#text+1]="Reverses payment: " .. reference(event.reversesId) end
             text[#text+1]="Note: " .. (event.note=="" and "(none)" or event.note)
         end
     else
         text[#text+1]=""
-        text[#text+1]="Original agreement: " .. terms.parentAgreementId .. " / " .. terms.parentOfferId
-        text[#text+1]="Original commitment: " .. terms.parentCommitId
+        text[#text+1]="Original agreement"
         text[#text+1]="Original debtor: " .. original.debtor .. " / Creditor: " .. original.creditor
         text[#text+1]="Original amount: " .. money(original.amountCopper)
         text[#text+1]="Original due: " .. due(original.dueUTC)
@@ -62,16 +70,16 @@ function IOU.SharedPaymentDetails(offer)
         local rows = C.ParseChain(terms.baseChain) or {}
         local remaining = original.amountCopper
         text[#text+1]=""
-        text[#text+1]="Exact prior acknowledged events: " .. terms.baseRevision
+        if #rows>0 then text[#text+1]="Previously confirmed payments and corrections" end
         for _, event in ipairs(rows) do
-            text[#text+1]=(event.kind=="GOLD_PAYMENT" and "Payment" or "Correction") .. " / " .. event.agreementId .. " / " .. event.offerId .. " / " .. event.commitId
+            text[#text+1]=(event.kind=="GOLD_PAYMENT" and "Payment " or "Correction ") .. reference(event.offerId)
             text[#text+1]="Amount: " .. money(event.amountCopper) .. " / Note: " .. (event.note=="" and "(none)" or event.note)
             if event.kind=="GOLD_PAYMENT" then remaining=remaining-event.amountCopper
-            else remaining=remaining+event.amountCopper; text[#text+1]="Reverses payment: " .. event.reversesId end
+            else remaining=remaining+event.amountCopper; text[#text+1]="Reverses payment: " .. reference(event.reversesId) end
         end
         text[#text+1]="Balance before this event: " .. money(remaining)
         if terms.kind=="GOLD_CORRECTION" then
-            text[#text+1]="Full reversal of payment: " .. terms.reversesId
+            text[#text+1]="Full reversal of payment: " .. reference(terms.reversesId)
             text[#text+1]="Balance after acknowledgment: " .. money(remaining+terms.amountCopper)
         else text[#text+1]="Balance after acknowledgment: " .. money(remaining-terms.amountCopper) end
     end
@@ -104,7 +112,7 @@ local function refreshForm(f)
     if f.paymentId then
         local payment=S.GetOffer(f.paymentId)
         local terms=termsOf(payment)
-        text=text .. "\n\nSelected payment: " .. f.paymentId .. "\nAmount: " .. money(terms.amountCopper)
+        text=text .. "\n\nSelected payment: " .. reference(f.paymentId) .. "\nAmount: " .. money(terms.amountCopper)
             .. "\nFull payment note: " .. (terms.note=="" and "(none)" or terms.note)
     end
     f.context:SetText(H.literal(text))
@@ -116,7 +124,7 @@ local function refreshForm(f)
         local item=correction and items[(f.page-1)*3+index]
         if item then
             row.paymentId,row.offerId=item.offerId,item.offerId
-            row:SetText((item.offerId==f.paymentId and "Selected: " or "Choose: ") .. item.offerId .. " / " .. money(item.amountCopper)); row:Show()
+            row:SetText((item.offerId==f.paymentId and "Selected payment " or "Choose payment ") .. reference(item.offerId) .. " / " .. money(item.amountCopper)); row:Show()
         else row.paymentId=nil; row:Hide() end
     end
     f.previous:SetShown(correction); f.next:SetShown(correction); f.pages:SetShown(correction)
@@ -207,7 +215,7 @@ function IOU.ShowSharedPayment(id,mode)
     f.parentId,f.parentTerms,f.base,f.peer=parent.offerId,parent.terms,view.baseChain,S.GetPeer()
     f.mode,f.remaining,f.paymentId,f.paymentTerms,f.page=mode,view.remainingCopper,nil,nil,1
     f.title:SetText(mode=="correction" and "Reverse a shared payment" or mode=="settle" and "Settle shared gold balance" or "Record a shared payment")
-    f.noteCaption:SetText(mode=="correction" and "Reason for full reversal (required; plain text)" or "Payment note (optional; plain text)")
+    f.noteCaption:SetText(mode=="correction" and "Reason (optional; blank records 'No reason provided')" or "Payment note (optional; plain text)")
     f.money:Fill(mode=="settle" and view.remainingCopper or 0)
     for _,box in ipairs(f.money) do box:SetEnabled(mode=="payment") end
     f.note:SetText(""); f.status:SetText(""); f.scroll:SetVerticalScroll(0)

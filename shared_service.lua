@@ -450,7 +450,11 @@ function V.ClosePaused(id, reason)
     local offer = value.store.offers[id]
     if not offer or offer.state ~= "PAUSED" then return reject("Only a paused offer can be closed locally.") end
     if value.closedPaused[id] then return reject("This paused offer is already closed locally.") end
-    if not reasonValid(reason,offer) then return reject("Enter a plain review reason (1-256 bytes).") end
+    if reason == nil or (type(reason) == "string" and #reason <= 256
+        and not reason:find("[%z\1-\31\127|]") and not reason:find("%S")) then
+        reason = "No reason provided"
+    end
+    if not reasonValid(reason,offer) then return reject("Review notes must be plain UTF-8 text (up to 256 bytes).") end
     local stamp
     stamp, err = now()
     if not stamp or stamp < offer.updatedAt then return reject(err or "The clock precedes this offer's latest event.") end

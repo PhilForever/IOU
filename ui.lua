@@ -4,6 +4,63 @@ local UI = {tab = "owed", page = 1, kind = "all", sort = "newest"}
 IOU.UI = UI
 local GOLD = {0.88, 0.73, 0.42}
 local MUTED = {0.65, 0.66, 0.63}
+local windows, inputs = {}, {}
+local stacking = false
+
+local function ownerWindow(frame)
+    while frame do
+        if frame.iouWindow then return frame end
+        frame = frame:GetParent()
+    end
+end
+local function frameTree(frame, offset)
+    local tree = {frame=frame, offset=offset or 0, children={}}
+    for _, child in ipairs({frame:GetChildren()}) do
+        tree.children[#tree.children + 1] = frameTree(child,
+            math.max(1, child:GetFrameLevel() - frame:GetFrameLevel()))
+    end
+    return tree
+end
+local function placeTree(tree, parentLevel)
+    local level = parentLevel + tree.offset
+    tree.frame:SetFrameLevel(level)
+    local highest = level
+    for _, child in ipairs(tree.children) do
+        highest = math.max(highest, placeTree(child, level))
+    end
+    return highest
+end
+local function raiseWindow(frame)
+    local owner = ownerWindow(frame)
+    if not owner or not owner:IsShown() or stacking then return end
+    stacking = true
+    for index, candidate in ipairs(windows) do
+        if candidate == owner then table.remove(windows, index); break end
+    end
+    windows[#windows + 1] = owner
+    -- Snapshot descendants before moving their parents: the client may also
+    -- adjust child levels. Each entire window must clear the preceding tree,
+    -- including scroll children and template buttons, not only its root frame.
+    local trees = {}
+    for _, candidate in ipairs(windows) do
+        if candidate:IsShown() then trees[#trees + 1] = frameTree(candidate) end
+    end
+    local level = 20
+    for _, tree in ipairs(trees) do level = placeTree(tree, level) + 10 end
+    for _, box in ipairs(inputs) do
+        if ownerWindow(box) ~= owner and box:HasFocus() then box:ClearFocus() end
+    end
+    stacking = false
+end
+local function input(box)
+    inputs[#inputs + 1] = box
+    box:EnableMouse(true)
+    box:HookScript("OnMouseDown", function(self, mouse)
+        if mouse == "LeftButton" then raiseWindow(self); self:SetFocus() end
+    end)
+    box:HookScript("OnEditFocusGained", raiseWindow)
+    box:HookScript("OnHide", function(self) self:ClearFocus() end)
+end
 
 local function literal(text) return (tostring(text or ""):gsub("|", "||")) end
 local function labelText(entry)
@@ -65,6 +122,7 @@ local function button(parent, text, width, x, y, action)
     b:SetPoint("TOPLEFT", x, y)
     b:SetText(text)
     b:SetScript("OnClick", action)
+    b:HookScript("OnMouseDown", raiseWindow)
     return b
 end
 local function edit(parent, width, x, y, max, numeric)
@@ -77,6 +135,7 @@ local function edit(parent, width, x, y, max, numeric)
     if numeric then box:SetNumeric(true) end
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    input(box)
     return box
 end
 local function scroll(parent, width, height, x, y)
@@ -86,6 +145,7 @@ local function scroll(parent, width, height, x, y)
     local child = CreateFrame("Frame", nil, frame)
     child:SetSize(width, height)
     frame:SetScrollChild(child)
+    frame:HookScript("OnMouseDown", raiseWindow)
     return frame, child
 end
 local function multiline(parent, width, height, x, y, max)
@@ -102,7 +162,13 @@ local function multiline(parent, width, height, x, y, max)
     box:SetMaxBytes(max)
     box:SetTextInsets(2, 2, 2, 2)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    input(box)
     sf:SetScrollChild(box)
+    local function focusBlank(_, mouse)
+        if mouse == "LeftButton" then raiseWindow(box); box:SetFocus() end
+    end
+    shell:EnableMouse(true); shell:HookScript("OnMouseDown", focusBlank)
+    sf:EnableMouse(true); sf:HookScript("OnMouseDown", focusBlank)
     box:SetScript("OnCursorChanged", function(self, _, cursorY, _, cursorHeight)
         local current = sf:GetVerticalScroll()
         local top = -cursorY
@@ -122,7 +188,11 @@ local function window(name, width, height)
     -- All windows remain ordinary, unprotected frames.
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
+    frame.iouWindow = true
+    windows[#windows + 1] = frame
     frame:SetFrameStrata("DIALOG")
+    frame:SetToplevel(true)
+    frame:SetBackdropColor(0.065, 0.074, 0.067, 1)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
@@ -130,6 +200,9 @@ local function window(name, width, height)
     frame:SetScript("OnDragStart", function(self) self:StartMoving() end)
     frame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
     frame:SetScript("OnShow", function(self) fit(self, width, height) end)
+    -- Hooks survive the main ledger's position-restoring OnShow handler.
+    frame:HookScript("OnShow", raiseWindow)
+    frame:HookScript("OnMouseDown", raiseWindow)
     local close = button(frame, "X", 26, width - 36, -10, function() frame:Hide() end)
     close:SetFrameLevel(frame:GetFrameLevel() + 5)
     frame:Hide()
@@ -175,7 +248,6 @@ local function buildMain()
     if UI.main then return end
     local f = window("IOULedgerWindow", 960, 720)
     UI.main = f
-    f:SetFrameStrata("HIGH")
     f:SetScript("OnShow", function(self)
         fit(self, 960, 720)
         local position = IOU.GetSettings().position
@@ -610,7 +682,7 @@ function IOU.ShowEdit()
         f.due = edit(f, 200, 29, -216, 10)
         font(f, 11, 25, -262, 460, "Agreement notes", MUTED)
         f.note = multiline(f, 455, 88, 29, -284, 2000)
-        font(f, 11, 25, -395, 460, "Reason for this change (required)", MUTED)
+        font(f, 11, 25, -395, 460, "Reason for this change (optional)", MUTED)
         f.reason = multiline(f, 455, 65, 29, -417, 2000)
         f.error = font(f, 11, 25, -501, 460, "", {1, 0.4, 0.32})
         f.save = button(f, "Save changes", 150, 340, -565, function()
@@ -686,7 +758,7 @@ function IOU.ShowAction(mode, entryID, eventID)
         or mode == "settle" and "Records the entire remaining balance as paid or delivered."
         or mode == "cancel" and "Moves this IOU to History without recording payment. Its balance and audit trail stay intact."
         or mode == "restore" and "Reopens this cancelled IOU with the same balance and history." or "")
-    f.noteCaption:SetText((mode == "reverse" or mode == "cancel" or mode == "restore") and "Reason (required)" or "Payment / delivery notes (optional)")
+    f.noteCaption:SetText((mode == "reverse" or mode == "cancel" or mode == "restore") and "Reason (optional)" or "Payment / delivery notes (optional)")
     f.confirm:SetText(mode == "cancel" and "Cancel IOU" or mode == "restore" and "Restore IOU" or mode == "reverse" and "Record reversal" or mode == "settle" and "Settle IOU" or "Record")
     f.note:SetText(""); f.error:SetText(""); f.money:Fill(remaining); f.quantity:SetText(tostring(remaining))
     f:Show()

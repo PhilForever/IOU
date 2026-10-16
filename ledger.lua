@@ -11,6 +11,7 @@ Ledger.MAX_TIMESTAMP = 4102444800
 Ledger.MAX_PLAYER = 80
 Ledger.MAX_LABEL = 512
 Ledger.MAX_NOTE = 2000
+Ledger.DEFAULT_REASON = "No reason provided"
 
 local floor = math.floor
 local dbKeys = { schema = true, nextID = true, entries = true }
@@ -69,6 +70,16 @@ end
 
 local function playerName(value)
     return text(value, Ledger.MAX_PLAYER, true) and not value:find("[%z\1-\31\127|]")
+end
+
+-- New actions may omit an explanation. Keep a neutral, explicit audit entry
+-- rather than weakening the validation of existing history records.
+local function optionalReason(value)
+    if value == nil then return Ledger.DEFAULT_REASON end
+    if text(value, Ledger.MAX_NOTE, false) and not value:find("%S") then
+        return Ledger.DEFAULT_REASON
+    end
+    return value
 end
 
 local function metadata(record, kind, strict)
@@ -321,10 +332,9 @@ function Ledger.Settle(db, id, note, timestamp)
 end
 
 function Ledger.Reverse(db, id, eventID, reason, timestamp)
-    if reason == nil then reason = "" end
+    reason = optionalReason(reason)
     local entry, err = mutableEntry(db, id, reason, timestamp)
     if not entry then return nil, err end
-    if not text(reason, Ledger.MAX_NOTE, true) then return nil, "Enter a reason for the reversal." end
     if not integer(eventID, 1, #entry.events) then return nil, "Payment not found." end
     if entry.events[eventID].type ~= "payment" then return nil, "Only payments can be reversed." end
     for _, event in ipairs(entry.events) do
@@ -336,9 +346,9 @@ function Ledger.Reverse(db, id, eventID, reason, timestamp)
 end
 
 function Ledger.Amend(db, id, details, reason, timestamp)
+    reason = optionalReason(reason)
     local entry, err = mutableEntry(db, id, reason, timestamp, false, true)
     if not entry then return nil, err end
-    if not text(reason, Ledger.MAX_NOTE, true) then return nil, "Enter a reason for the amendment." end
     local ok
     ok, err = metadata(details, entry.kind, true)
     if not ok then return nil, err end
@@ -353,9 +363,9 @@ function Ledger.Amend(db, id, details, reason, timestamp)
 end
 
 local function lifecycle(db, id, reason, timestamp, restoring)
+    reason = optionalReason(reason)
     local entry, err = mutableEntry(db, id, reason, timestamp, restoring, true)
     if not entry then return nil, err end
-    if not text(reason, Ledger.MAX_NOTE, true) then return nil, "Enter a reason for this change." end
     if restoring then
         if not Ledger.Cancelled(entry) then return nil, "Only a cancelled IOU can be restored." end
     elseif Ledger.Balance(entry) == 0 then

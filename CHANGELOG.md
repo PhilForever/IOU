@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2 — 2026-10-16
+
+- Fixed window stacking so foreground dialogs and their inputs stay above the complete background window, including scroll children. Added opaque backgrounds and immediate click focus for single-line and multiline fields.
+- Made amendment, cancellation, restoration, reversal, and paused-review reasons optional. Blank reasons record "No reason provided"; existing schemas and exact shared consent remain intact.
+- Simplified Shared reviews and payment references while keeping full names, amounts, deadlines, notes, prior event descriptions, and the selected correction target visible.
+- Updated the connection diagnostic to protocol 2 (`IOU_LINKv2`) with pipe-free plain text and bounded receive metadata to distinguish absent events from rejected sender/channel/payload.
+- Added stacking/focus, optional-reason, and diagnostic regressions. Personal and Shared records remain separate; personal `IOU2` exports do not include Shared.
+
+Validation: Lua 5.1 regressions, two-client simulations, publisher checks, and package validation. Live 0.3.1 screenshots show an acknowledged Shared agreement and a declined payment, while the standalone diagnostic timed out at 0/4. Its old pipe framing is a suspected cause, not a proven diagnosis. Actual focus latency and protocol-2 delivery need live confirmation. Both players need 0.3.2 for the new diagnostic; `/reload` loads this update.
+
 ## 0.3.1 — 2026-10-16
 
 - Fixed a broad realm restriction check that prevented enabling the connection test and shared logged whispers even when that flag did not establish the API's availability.

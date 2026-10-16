@@ -198,6 +198,13 @@ end
 function P.BuildCorrection(store,parentId,paymentId,reason,closedPaused)
     local view, err = P.View(store,parentId,closedPaused)
     if not view then return nil, err end
+    -- Validate the supplied text before replacing a blank explanation. The
+    -- resulting default becomes exact terms that both players must review.
+    local original = C.ParseTerms(store.offers[parentId].terms)
+    original.note = reason == nil and "" or reason
+    local valid, problem = C.ValidateTerms(original)
+    if not valid then return nil, problem end
+    if not original.note:find("%S") then reason = "No reason provided" end
     local payment
     for _, event in ipairs(view.events) do
         if event.offerId == paymentId and event.kind == "GOLD_PAYMENT" and event.effective and not event.reversed then payment=event end

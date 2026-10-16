@@ -4,7 +4,7 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.3.1 fixes a connection check that could block logged addon messages on Forever.** It also includes shared gold agreements, repayments, and corrections. Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. The original proposer can then record partial payments, settlement, or a full reversal of one payment; each requires the other player's acknowledgment. Both players should use 0.3.1. Shared features remain opt-in: automated simulations cover the full flow, while actual Forever delivery and rendering remain unverified.
+**0.3.2 fixes overlapping dialogs and text-field focus, makes reasons optional, and updates the connection diagnostic.** Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. The original proposer can then record partial payments, settlement, or a full reversal of one payment; each requires the other player's acknowledgment. Both players should use 0.3.2 for diagnostics. Live screenshots demonstrate an acknowledged Shared agreement and a declined payment; focus, complete repayments/corrections, and shared persistence still need client verification.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
@@ -32,9 +32,9 @@ Click **+ New IOU**, choose **Owed to me** or **I owe**, and enter the player an
 
 Use the player's full name to distinguish characters. Item links can be pasted or inserted by focusing the item label field and Shift-clicking an item. Notes and an optional due date provide context. Enter dates as `YYYY-MM-DD`; an agreement becomes overdue after the end of that day in the client's local time.
 
-Select an agreement to view its remaining balance and history. Record a partial payment or delivery, or settle its remaining balance. A mistaken repayment can be reversed with a reason; the original event and correction stay visible.
+Select an agreement to view its remaining balance and history. Record a partial payment or delivery, or settle its remaining balance. A mistaken repayment can be reversed; the original event and correction stay visible. Notes, due dates, and reasons are optional. Blank reasons are retained as "No reason provided" in the history.
 
-Use **Edit details** to change the player, item/favor label, note, and due date with an audit reason. Amount, type, and direction stay fixed so an edit cannot rewrite a loan's financial history. **Cancel IOU** removes an agreement from active balances without recording a payment. **Restore IOU** brings it back; both actions require a reason and retain the records.
+Use **Edit details** to change the player, item/favor label, note, and due date with an optional audit reason. Amount, type, and direction stay fixed so an edit cannot rewrite a loan's financial history. **Cancel IOU** removes an agreement from active balances without recording a payment. **Restore IOU** brings it back; both actions retain the records and accept an optional reason.
 
 ## Find what needs attention
 

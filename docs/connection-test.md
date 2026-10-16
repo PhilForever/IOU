@@ -1,12 +1,12 @@
 # Connection test
 
-This diagnostic checks IOU's actual addon-message connection. It does not create agreements or change your ledger. Use **0.3.1** on both clients; it fixes a connection check in 0.3.0 that could prevent listening from starting.
+This diagnostic checks IOU's actual addon-message connection. It does not create agreements or change your ledger. Use **0.3.2** on both clients. It uses protocol 2, prefix `IOU_LINKv2`, and pipe-free plain text; a 0.3.1 diagnostic cannot reply to this version.
 
 An ordinary chat whisper only checks chat. IOU checks its own addon messages and measures the text for you; you do not need to count bytes or type special characters.
 
 ## Two-player test
 
-You need two online characters, each running the same IOU version. After updating from 0.3.0, `/reload` loads this Lua-only fix. Fully restart after a first installation or an update that adds files.
+You need two online characters, each running the same IOU version. After updating from 0.3.1, `/reload` loads this Lua-only fix. Fully restart after a first installation or an update that adds files.
 
 1. Both players open **IOU > Settings > Connection test**, or type `/iou test`.
 2. Each enters the other character's full **first name and surname**, as used for whispers. For example: `Amber Stone`. **Use target** can fill this in when you have the other player targeted.
@@ -26,6 +26,8 @@ Reports include character names and client details. Share them privately; remove
 Check that both players are online, entered the other's full name, clicked **Listen**, and have the same test build. Then run it once more. If it still fails, copy both reports; the failure is useful evidence too.
 
 The report also includes an automatic local preflight. That checks the local setup only. Testing against your own character is blocked so it cannot be mistaken for a successful two-player test.
+
+The report counts diagnostic-prefix events, selected-peer whispers, recognized probes, and reasons for ignored traffic. A capped metadata sample contains channel/sender/target/byte size, never unknown payload text. This distinguishes absent events from rejected names, channels, or frames. The old pipe separators are a suspected compatibility issue; the new format still needs a live retry, even though Shared traffic worked in the reported session.
 
 `Listening: OFF` with only local preflight results means no two-player test has run. A copied report includes the last attempted player/action, its blocking error, and both current and captured restriction states. `AreOutgoingAddonChatMessagesRestricted` is advisory here: that broad realm flag can be true even when addon comms work. Actual `InChatMessagingLockdown` and native logged-send failures still stop messages. Wait for a real lockdown to clear before retrying. IOU never switches to ordinary whispers or unlogged addon messages.
 
