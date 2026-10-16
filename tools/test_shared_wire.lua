@@ -41,6 +41,7 @@ local function simulation()
         local client={name=name,frames={},sent={},received={},result=0}
         local saved={marker="personal ledger left alone"}
         local env=setmetatable({IOUDB=saved},{__index=_G})
+        client.env=env
         env._G=env
         env.GetTime=function() if not sim.noClock then return sim.now end end
         env.issecretvalue=function(value) return options.secret~=nil and value==options.secret end
@@ -256,7 +257,7 @@ test("shared transport fails safely for native registration and all nonzero send
         local sim=simulation(); local a=sim:client("Amber Stone",{registration=registration})
         reject(function() return a:enable("Birch Vale") end)
     end
-    for _,options in ipairs({{noLogged=true},{restricted=true},{lockdown=true}}) do
+    for _,options in ipairs({{noLogged=true},{lockdown=true}}) do
         local sim=simulation(); reject(function() return sim:client("Amber Stone",options):enable("Birch Vale") end)
     end
     for _,code in ipairs({1,2,3,4,5,6,7,8,9,10,11,12,13,true,false}) do
@@ -267,6 +268,56 @@ test("shared transport fails safely for native registration and all nonzero send
     end
     local sim=simulation(); local a=sim:client("Amber Stone",{throws=true}); assert(a:enable("Birch Vale"))
     assert(a.wire.Send({{target="Birch Vale",message=message()}})); sim:step(5); equal(a:drivers(),0)
+end)
+
+test("shared logged whispers deliver exact terms despite the general addon restriction flag",function()
+    local sim=simulation()
+    local a=sim:client("Amber Stone",{restricted=true})
+    local b=sim:client("Birch Vale",{restricted=true})
+    assert(a:enable(b.name)); assert(b:enable(a.name))
+    local outgoing=message("Bjørn blåbær")
+    assert(a.wire.Send({{target=b.name,message=outgoing}}))
+    sim:step(10)
+    equal(#b.received,1); equal(b.received[1].sender,a.name)
+    equal(assert(C.Encode(b.received[1].message)),assert(C.Encode(outgoing)))
+    for _,packet in ipairs(a.sent) do
+        equal(packet.prefix,W.PREFIX); equal(packet.channel,"WHISPER"); equal(packet.target,b.name)
+    end
+    a:untouched(); b:untouched()
+end)
+
+test("shared unknown general restriction observations do not replace logged native send results",function()
+    local secret={}
+    for _,query in ipairs({function() return nil end, function() return "unknown" end,
+        function() error("general restriction API exception") end, function() return secret end, false}) do
+        local sim=simulation(); local a=sim:client("Amber Stone",{secret=secret})
+        local b=sim:client("Birch Vale")
+        a.env.C_ChatInfo.AreOutgoingAddonChatMessagesRestricted=query or nil
+        if query==false then a.env.C_ChatInfo.InChatMessagingLockdown=nil end
+        assert(a:enable(b.name)); assert(b:enable(a.name))
+        assert(a.wire.Send({{target=b.name,message=message()}}))
+        sim:step(10); equal(#b.received,1)
+        a:untouched(); b:untouched()
+    end
+end)
+
+test("shared true or unreadable lockdown blocks enable and stops a queued native send",function()
+    local secret={}
+    for _,query in ipairs({function() return true end, function() return nil end,
+        function() error("lockdown API exception") end, function() return secret end}) do
+        local sim=simulation(); local a=sim:client("Amber Stone",{secret=secret})
+        a.env.C_ChatInfo.InChatMessagingLockdown=query
+        reject(function() return a:enable("Birch Vale") end)
+        equal(#a.sent,0); equal(a:drivers(),0); a:untouched()
+
+        local live=simulation(); local b=live:client("Amber Stone",{secret=secret})
+        assert(b:enable("Birch Vale"))
+        assert(b.wire.Send({{target="Birch Vale",message=message()}}))
+        b.env.C_ChatInfo.InChatMessagingLockdown=query
+        live:step(10,false)
+        equal(#b.sent,0); equal(b:drivers(),0)
+        assert(b.wire.GetStatus():find("Pending sends stopped",1,true)); b:untouched()
+    end
 end)
 
 test("shared nil send results remain unknown and receiver callbacks are protected",function()

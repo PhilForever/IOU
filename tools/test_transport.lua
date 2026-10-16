@@ -347,10 +347,9 @@ test("missing Forever identity fails closed and never invents a surname from the
     sim:unchanged()
 end)
 
-test("missing, restricted and throwing chat APIs remain inert with useful errors", function()
-    for _, options in ipairs({{noAPI=true},{noLoggedAPI=true},{restricted=true},
-        {lockdown=true},{registerFails=true},{registerThrows=true},
-        {restrictionThrows=true}}) do
+test("missing logged APIs and genuine lockdown remain inert with useful errors", function()
+    for _, options in ipairs({{noAPI=true},{noLoggedAPI=true},
+        {lockdown=true},{registerFails=true},{registerThrows=true}}) do
         local sim=simulation()
         local a=sim:client("Amber Stone",options)
         local ok,err=a.transport.EnableListening(true,"Birch Vale")
@@ -365,6 +364,112 @@ test("missing, restricted and throwing chat APIs remain inert with useful errors
     sim:advance(60)
     assert(session.state~="complete"); equal(echoed(session),0)
     equal(a:activeDrivers(),0); sim:unchanged()
+end)
+
+test("the general addon restriction flag does not prevent exact logged-whisper round trips", function()
+    local sim=simulation()
+    local a=sim:client("Amber Stone",{restricted=true})
+    local b=sim:client("Birch Vale",{restricted=true})
+    b:listen(a.name)
+    local session=a:start(b.name)
+    sim:advance(10)
+    equal(session.state,"complete"); equal(echoed(session),4)
+    equal(#a.sent,4); equal(#b.sent,4)
+    for _,packet in ipairs(sim.sent) do
+        equal(packet.prefix,a.transport.PREFIX); equal(packet.channel,"WHISPER")
+    end
+    sim:unchanged()
+end)
+
+test("unavailable general restriction observations remain advisory without crashing or fallback", function()
+    local secret={}
+    local cases={
+        function() return nil end,
+        function() return "unknown" end,
+        function() error("private general restriction API exception") end,
+        function() return secret end,
+        false,
+    }
+    for _,query in ipairs(cases) do
+        local sim,a,b=pair({secret=secret})
+        a.env.C_ChatInfo.AreOutgoingAddonChatMessagesRestricted=query or nil
+        if query==false then a.env.C_ChatInfo.InChatMessagingLockdown=nil end
+        b:listen(a.name)
+        local session=a:start(b.name)
+        sim:advance(10)
+        equal(session.state,"complete"); equal(echoed(session),4)
+        local report=a.transport.GetReport()
+        assert(report:find("AreOutgoingAddonChatMessagesRestricted",1,true))
+        assert(not report:find("private general restriction API exception",1,true))
+        sim:unchanged()
+    end
+end)
+
+test("true or unreadable live lockdown blocks native sends and preserves a readable failure", function()
+    local secret={}
+    for _,query in ipairs({function() return true end, function() return nil end,
+        function() error("private lockdown API exception") end, function() return secret end}) do
+        local sim,a,b=pair({secret=secret})
+        a.env.C_ChatInfo.InChatMessagingLockdown=query
+        local ok,err=a.transport.EnableListening(true,b.name)
+        assert(not ok and type(err)=="string")
+        sim:advance(30); equal(#a.sent,0); equal(a:activeDrivers(),0)
+        local report=a.transport.GetReport()
+        assert(report:find("InChatMessagingLockdown",1,true))
+        assert(report:find(err,1,true))
+        assert(not report:find("private lockdown API exception",1,true))
+        sim:unchanged()
+
+        local live,c,d=pair({secret=secret})
+        local session=c:start(d.name)
+        equal(#c.sent,1)
+        c.env.C_ChatInfo.InChatMessagingLockdown=query
+        live:advance(30)
+        equal(#c.sent,1); assert(session.state~="complete")
+        equal(c:activeDrivers(),0); live:unchanged()
+    end
+end)
+
+test("blocked Listen and Run reports retain attempted peer and restriction evidence without traffic", function()
+    local sim,a,b=pair({restricted=true,lockdown=true})
+    local ok,err=a.transport.EnableListening(true,"  Birch   Vale  ")
+    assert(not ok and type(err)=="string")
+    local report=a.transport.GetReport()
+    assert(report:find("Last attempt",1,true))
+    assert(report:find("Listen",1,true) and report:find(b.name,1,true))
+    assert(report:find(err,1,true)); assert(report:find("true",1,true))
+    assert(report:find("AreOutgoingAddonChatMessagesRestricted",1,true))
+    assert(report:find("InChatMessagingLockdown",1,true))
+    assert(a.transport.GetStatus():find(err,1,true))
+    a.env.C_ChatInfo.AreOutgoingAddonChatMessagesRestricted=function() return false end
+    a.env.C_ChatInfo.InChatMessagingLockdown=function() return false end
+    -- Generating a report may read current flags, but may not initialize or send.
+    local reportNativeCalls=0
+    a.env.C_ChatInfo.RegisterAddonMessagePrefix=function() reportNativeCalls=reportNativeCalls+1; error("report attempted registration") end
+    a.env.C_ChatInfo.SendAddonMessageLogged=function() reportNativeCalls=reportNativeCalls+1; error("report attempted send") end
+    for _=1,3 do
+        report=a.transport.GetReport()
+        assert(report:find(err,1,true) and report:find(b.name,1,true))
+        assert(report:find("true",1,true) and report:find("false",1,true))
+    end
+    equal(reportNativeCalls,0)
+    equal(#sim.sent,0); equal(a:activeDrivers(),0); assert(not a.transport.IsListening())
+    a.transport.Stop()
+    assert(not a.transport.GetStatus():find(err,1,true))
+    sim:unchanged()
+
+    local live,c,d=pair()
+    c:listen(d.name)
+    c.env.C_ChatInfo.InChatMessagingLockdown=function() return true end
+    local started,startError=c.transport.Start(d.name)
+    assert(not started and type(startError)=="string")
+    report=c.transport.GetReport()
+    assert(report:find("Last attempt",1,true) and report:find("Run",1,true))
+    assert(report:find(d.name,1,true) and report:find(startError,1,true))
+    assert(c.transport.GetStatus():find(startError,1,true))
+    equal(#live.sent,0); equal(c:activeDrivers(),0)
+    c.transport.Stop(); assert(not c.transport.GetStatus():find(startError,1,true))
+    live:unchanged()
 end)
 
 test("prefix registration honors numeric success and duplicate results and rejects other types", function()

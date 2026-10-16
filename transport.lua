@@ -6,7 +6,7 @@ IOU.Transport = T
 -- reads or writes IOUDB, sends ordinary whispers, or runs automatically at login.
 local frame, initialized, initError, registration
 local listening, peer, peerKey = false, nil, nil
-local active, lastTest, serial = nil, nil, 0
+local active, lastTest, lastAttempt, serial = nil, nil, nil, 0
 local echoQueue, observations = {}, {}
 local responseWindow, responseSeen, responseUnique = nil, {}, 0
 local responseReport = {probes = {}}
@@ -129,17 +129,41 @@ function T.Parse(wire)
     return {kind=kind, version=version, id=id, index=index, body=body, wire=wire}
 end
 
-local function restriction()
-    if type(C_ChatInfo) ~= "table" then return "Logged addon chat is unavailable in this client." end
+local function restrictionSnapshot()
+    local snapshot = {}
     for _, name in ipairs({"AreOutgoingAddonChatMessagesRestricted", "InChatMessagingLockdown"}) do
-        if type(C_ChatInfo[name]) == "function" then
+        local value = {state="missing", text="unavailable (API absent)"}
+        if type(C_ChatInfo) == "table" and type(C_ChatInfo[name]) == "function" then
             local ok, blocked = pcall(C_ChatInfo[name])
-            if not ok or not plain(blocked) or type(blocked) ~= "boolean" then
-                return "Could not check " .. name .. "."
-            end
-            if blocked then return "Client chat restriction: " .. name .. "." end
+            if not ok then value={state="error",text="unavailable (API error)"}
+            elseif not plain(blocked) then value={state="secret",text="unavailable (secret result)"}
+            elseif type(blocked) ~= "boolean" then value={state="invalid",text="unavailable (invalid result)"}
+            else value={state="known",value=blocked,text=blocked and "true" or "false"} end
         end
+        snapshot[name]=value
     end
+    return snapshot
+end
+
+local function restriction(snapshot)
+    if type(C_ChatInfo) ~= "table" then return "Logged addon chat is unavailable in this client." end
+    -- The broad realm flag is also true on Forever realms where ordinary
+    -- addon comms work. It is diagnostic context, not permission for this API.
+    -- The logged native send remains responsible for its actual restrictions.
+    local lockdown=(snapshot or restrictionSnapshot()).InChatMessagingLockdown
+    if lockdown.state == "missing" then return end
+    if lockdown.state ~= "known" then return "Could not check InChatMessagingLockdown." end
+    if lockdown.value then return "Client chat restriction: InChatMessagingLockdown." end
+end
+
+local function beginAttempt(operation, target)
+    lastAttempt={operation=operation,target=target,restrictions=restrictionSnapshot()}
+    return lastAttempt
+end
+local function rejectAttempt(attempt, problem)
+    attempt.error=problem
+    changed()
+    return nil,problem
 end
 
 local function resultText(value, names)
@@ -264,19 +288,21 @@ end
 
 function T.EnableListening(enabled, target)
     if enabled ~= true then
+        lastAttempt=nil
         listening, peer, peerKey, echoQueue = false, nil, nil, {}
         if active then finish("cancelled") else driver(); changed() end
         return true
     end
     local name, problem = T.CanonicalName(target)
-    if not name then return nil, problem end
+    local attempt=beginAttempt("Listen",name)
+    if not name then return rejectAttempt(attempt,problem) end
     local own = T.GetLocalName()
-    if not own then return nil, "Your full player name is unavailable. Try again after login." end
-    if own and key(own) == key(name) then return nil, "Choose another player; this test needs two clients." end
+    if not own then return rejectAttempt(attempt,"Your full player name is unavailable. Try again after login.") end
+    if own and key(own) == key(name) then return rejectAttempt(attempt,"Choose another player; this test needs two clients.") end
     local ok, err = T.Initialize()
-    if not ok then return nil, err end
-    problem = restriction()
-    if problem then return nil, problem end
+    if not ok then return rejectAttempt(attempt,err) end
+    problem = restriction(attempt.restrictions)
+    if problem then return rejectAttempt(attempt,problem) end
     if active and key(name) ~= peerKey then finish("cancelled") end
     if key(name) ~= peerKey then
         echoQueue, observations = {}, {}
@@ -295,14 +321,15 @@ function T.IsRunning() return active ~= nil end
 
 function T.Start(target)
     local name, problem = T.CanonicalName(target)
-    if not name then return nil, problem end
+    local attempt=beginAttempt("Run test",name)
+    if not name then return rejectAttempt(attempt,problem) end
     local own = T.GetLocalName()
-    if not own then return nil, "Your full player name is unavailable. Try again after login." end
-    if own and key(own) == key(name) then return nil, "Choose another player; this test needs two clients." end
-    if not listening or key(name) ~= peerKey then return nil, "Enable the test for this exact player first." end
-    if active then return nil, "A link test is already running." end
-    problem = restriction()
-    if problem then return nil, problem end
+    if not own then return rejectAttempt(attempt,"Your full player name is unavailable. Try again after login.") end
+    if own and key(own) == key(name) then return rejectAttempt(attempt,"Choose another player; this test needs two clients.") end
+    if not listening or key(name) ~= peerKey then return rejectAttempt(attempt,"Enable the test for this exact player first.") end
+    if active then return rejectAttempt(attempt,"A link test is already running.") end
+    problem = restriction(attempt.restrictions)
+    if problem then return rejectAttempt(attempt,problem) end
     serial = serial + 1
     local epoch = clock()
     if type(time) == "function" then
@@ -349,6 +376,7 @@ end
 function T.GetStatus()
     if initError then return initError end
     if active then return "Testing " .. active.target .. ": " .. matches(active) .. "/4 exact round trips." end
+    if lastAttempt and lastAttempt.error then return lastAttempt.operation .. " blocked: " .. lastAttempt.error end
     if listening and rateLimitNote and responseWindow and clock() - responseWindow < WINDOW then return rateLimitNote end
     if lastTest and (not listening or key(lastTest.target) == peerKey) then
         local count = matches(lastTest)
@@ -376,6 +404,16 @@ function T.GetReport()
         and type(C_ChatInfo.RegisterAddonMessagePrefix) == "function"
         and type(C_ChatInfo.SendAddonMessageLogged) == "function"
     lines[#lines+1] = "Logged addon whisper API: " .. (apiAvailable and "available locally (delivery untested)" or "UNAVAILABLE in this client")
+    local function addRestrictions(label,snapshot)
+        lines[#lines+1]=label .. " AreOutgoingAddonChatMessagesRestricted: " .. snapshot.AreOutgoingAddonChatMessagesRestricted.text .. " (advisory only for this logged test)"
+        lines[#lines+1]=label .. " InChatMessagingLockdown: " .. snapshot.InChatMessagingLockdown.text
+    end
+    addRestrictions("Current",restrictionSnapshot())
+    if lastAttempt then
+        lines[#lines+1]="Last attempt: " .. lastAttempt.operation .. " / target " .. short(lastAttempt.target)
+            .. " / " .. (lastAttempt.error and "BLOCKED: " .. lastAttempt.error or "enabled")
+        addRestrictions("At last attempt",lastAttempt.restrictions)
+    end
     -- Local preflight needs neither a registered prefix nor another player.
     -- These deterministic checks never call any chat API.
     for i=1,4 do

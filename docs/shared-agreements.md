@@ -1,6 +1,6 @@
 # Shared gold agreements (experimental)
 
-Version **0.3.0** includes payments and corrections in the opt-in agreement view under **Shared** or `/iou shared`. Both characters should use 0.3.0; existing shared gold agreements are retained. The addon uses the normal Release channel, while Shared remains experimental: automated two-client simulations cover the flow, and actual Forever addon-message delivery and rendering remain unverified.
+Version **0.3.1** includes payments and corrections in the opt-in agreement view under **Shared** or `/iou shared`, and fixes an overbroad connection check from 0.3.0. Both characters should use 0.3.1; existing shared gold agreements are retained. The addon uses the normal Release channel, while Shared remains experimental: automated two-client simulations cover the flow, and actual Forever addon-message delivery and rendering remain unverified.
 
 ## Propose and accept
 

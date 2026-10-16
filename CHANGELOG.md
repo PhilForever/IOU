@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — 2026-10-16
+
+- Fixed a broad realm restriction check that prevented enabling the connection test and shared logged whispers even when that flag did not establish the API's availability.
+- Kept actual chat-lockdown checks and native logged-send failures in effect; local submission still never counts as a delivery receipt.
+- Added both current restriction states, the attempted player, and the exact failed Listen/Run operation to copied diagnostic reports. Unknown or secret results stay safely labeled without exposing raw values.
+- Made Stop clear a failed attempt and its visible error, including when listening could not start.
+- Updated the connection guide and added focused UI, transport, report, and shared-wire regressions. Existing personal/shared records and protocols are unchanged.
+
+Validation: Lua 5.1 regressions, two-client simulations, publisher checks, and package validation. The user's 0.3.0 report on Forever build 70425 confirmed local preflights passed but no test traffic was sent because of the old check. Actual logged-whisper round trips remain pending a retry on 0.3.1. Published through the regular Release channel.
+
 ## 0.3.0 — 2026-10-16
 
 - Published the shared-agreement features through CurseForge's normal **Release** channel, allowing updates with the app's default release setting.

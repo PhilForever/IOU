@@ -1620,6 +1620,45 @@ test("connection report copy keeps selected text stable and closing the window c
     assert(not form:IsShown() and not api.Transport.IsListening())
 end)
 
+test("connection copy includes blocked Listen evidence and Stop clears transport failure", function()
+    local state=coreSession({ui=true,connection=true})
+    local api=state.api
+    assert(api.Initialize())
+    assert(api.Add({player="Ledger Peer",direction="owed",kind="money",amount=123,label="",note="Private ledger note"}))
+    local before=copy(state.env.IOUDB)
+    state.env.C_ChatInfo.AreOutgoingAddonChatMessagesRestricted=function() return false end
+    state.env.C_ChatInfo.InChatMessagingLockdown=function() return true end
+    api.ShowConnectionTest("  Birch   Vale  ")
+    local form=api.UI.connection
+    state.click(form.listen)
+    local problem="Client chat restriction: InChatMessagingLockdown."
+    assert(form.status:GetText():find(problem,1,true),"blocked Listen did not show its error")
+    assert(api.Transport.GetStatus():find(problem,1,true))
+    assert(not api.Transport.IsListening() and not form.run.enabled)
+    state.click(form.copy)
+    local report=form.box:GetText()
+    assert(report:find("Last attempt",1,true) and report:find("Listen",1,true))
+    assert(report:find("Birch Vale",1,true),"copy omitted the canonical attempted peer")
+    assert(report:find(problem,1,true),"copy omitted the visible failure")
+    assert(report:find("AreOutgoingAddonChatMessagesRestricted: false",1,true))
+    assert(report:find("InChatMessagingLockdown: true",1,true))
+    assert(not report:find("Private ledger note",1,true))
+    state.advance(30); equal(#state.transportSent,0)
+    assert(same(state.env.IOUDB,before),"blocked connection controls changed the ledger")
+    state.env.SlashCmdList.IOU("test stop")
+    assert(not api.Transport.GetStatus():find(problem,1,true))
+    assert(not form.status:GetText():find(problem,1,true),"slash Stop left the visible failure behind")
+    state.click(form.copy)
+    assert(not form.box:GetText():find("BLOCKED:",1,true))
+    state.click(form.listen)
+    assert(form.status:GetText():find(problem,1,true) and form.stop.enabled)
+    state.click(form.stop)
+    assert(not form.status:GetText():find(problem,1,true),"Stop button left the visible failure behind")
+    assert(not api.Transport.GetStatus():find(problem,1,true))
+    assert(not form.stop.enabled and not api.Transport.IsListening())
+    equal(#state.transportSent,0); assert(same(state.env.IOUDB,before))
+end)
+
 test("connection target helper and slash Stop remain explicit and preserve the live ledger", function()
     local target="N\195\179ra Star"
     local state=coreSession({ui=true,connection=true,target=target})

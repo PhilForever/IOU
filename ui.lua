@@ -764,7 +764,7 @@ local function refreshConnection()
     f.status:SetText(literal(f.problem or transport.GetStatus()))
     f.listen:SetEnabled(not listening)
     f.run:SetEnabled(listening and not transport.IsRunning())
-    f.stop:SetEnabled(listening)
+    f.stop:SetEnabled(listening or f.problem ~= nil)
     f.peer:SetEnabled(not listening)
     f.target:SetEnabled(not listening)
     if not f.box:HasFocus() then f.box:SetText(transport.GetReport()) end
@@ -818,7 +818,7 @@ function IOU.ShowConnectionTest(peer)
             f.box:ClearFocus(); f.peer:ClearFocus(); f.problem = nil
             transport.Stop()
         end)
-        IOU.OnTransportChanged = refreshConnection
+        IOU.OnTransportChanged = function() f.problem=nil; refreshConnection() end
     end
     local f = UI.connection
     if peer and not transport.IsListening() then f.peer:SetText(peer) end

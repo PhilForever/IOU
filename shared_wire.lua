@@ -184,12 +184,12 @@ end
 local function restriction()
     if type(C_ChatInfo)~="table" or type(C_ChatInfo.RegisterAddonMessagePrefix)~="function"
         or type(C_ChatInfo.SendAddonMessageLogged)~="function" then return "Logged addon whispers are unavailable." end
-    for _,name in ipairs({"AreOutgoingAddonChatMessagesRestricted","InChatMessagingLockdown"}) do
-        if type(C_ChatInfo[name])=="function" then
-            local ok,blocked=pcall(C_ChatInfo[name])
-            if not ok or not plain(blocked) or type(blocked)~="boolean" then return "Client chat restriction check failed." end
-            if blocked then return "Client chat restriction: "..name.."." end
-        end
+    -- The broad realm restriction flag can be true even when addon comms work.
+    -- Keep actual chat lockdown and native logged-send return/error handling.
+    if type(C_ChatInfo.InChatMessagingLockdown)=="function" then
+        local ok,blocked=pcall(C_ChatInfo.InChatMessagingLockdown)
+        if not ok or not plain(blocked) or type(blocked)~="boolean" then return "Client chat restriction check failed: InChatMessagingLockdown." end
+        if blocked then return "Client chat restriction: InChatMessagingLockdown." end
     end
 end
 local function queuedPackets()

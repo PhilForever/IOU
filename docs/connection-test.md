@@ -1,17 +1,17 @@
 # Connection test
 
-This is an optional test for the next stage of IOU. It does not create agreements or change your ledger.
+This diagnostic checks IOU's actual addon-message connection. It does not create agreements or change your ledger. Use **0.3.1** on both clients; it fixes a connection check in 0.3.0 that could prevent listening from starting.
 
 An ordinary chat whisper only checks chat. IOU checks its own addon messages and measures the text for you; you do not need to count bytes or type special characters.
 
 ## Two-player test
 
-You need two online characters, each running the same IOU test build.
+You need two online characters, each running the same IOU version. After updating from 0.3.0, `/reload` loads this Lua-only fix. Fully restart after a first installation or an update that adds files.
 
 1. Both players open **IOU > Settings > Connection test**, or type `/iou test`.
 2. Each enters the other character's full **first name and surname**, as used for whispers. For example: `Amber Stone`. **Use target** can fill this in when you have the other player targeted.
 3. Both click **Listen**.
-4. One player clicks **Run test** and waits for the result.
+4. One player clicks **Run test** and waits for the result. That player should see **Test complete: 4/4 exact round trips.** The listening player does not need to start a second test.
 5. Both click **Copy report**, then press **Ctrl+C** in the report box. Paste the reports into the development chat.
 6. Click **Stop** when finished. Listening also turns off on `/reload` or logout.
 
@@ -27,6 +27,8 @@ Check that both players are online, entered the other's full name, clicked **Lis
 
 The report also includes an automatic local preflight. That checks the local setup only. Testing against your own character is blocked so it cannot be mistaken for a successful two-player test.
 
+`Listening: OFF` with only local preflight results means no two-player test has run. A copied report includes the last attempted player/action, its blocking error, and both current and captured restriction states. `AreOutgoingAddonChatMessagesRestricted` is advisory here: that broad realm flag can be true even when addon comms work. Actual `InChatMessagingLockdown` and native logged-send failures still stop messages. Wait for a real lockdown to clear before retrying. IOU never switches to ordinary whispers or unlogged addon messages.
+
 ## Commands
 
 | Command | Action |
@@ -35,4 +37,4 @@ The report also includes an automatic local preflight. That checks the local set
 | `/iou test Amber Stone` | Open it with that full name filled in; sends nothing. |
 | `/iou test stop` | Stop listening and sending test messages. |
 
-This build tests communication only. Shared proposals, acceptance, and shared repayments come later, after this test supplies live client evidence.
+This window tests communication only. Shared agreements and payments are available separately under `/iou shared`; follow the [Shared guide](shared-agreements.md) after confirming the connection.

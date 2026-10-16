@@ -4,7 +4,7 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.3.0 adds shared gold agreements, repayments, and corrections as a normal Release.** Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. The original proposer can then record partial payments, settlement, or a full reversal of one payment; each requires the other player's acknowledgment. Both players should use 0.3.0. Shared features remain opt-in: automated simulations cover the full flow, while actual Forever delivery and rendering remain unverified.
+**0.3.1 fixes a connection check that could block logged addon messages on Forever.** It also includes shared gold agreements, repayments, and corrections. Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. The original proposer can then record partial payments, settlement, or a full reversal of one payment; each requires the other player's acknowledgment. Both players should use 0.3.1. Shared features remain opt-in: automated simulations cover the full flow, while actual Forever delivery and rendering remain unverified.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
