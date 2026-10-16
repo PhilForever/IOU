@@ -1,6 +1,8 @@
 # Connection test
 
-This diagnostic checks IOU's actual addon-message connection. It does not create agreements or change your ledger. Use **0.3.2** on both clients. It uses protocol 2, prefix `IOU_LINKv2`, and pipe-free plain text; a 0.3.1 diagnostic cannot reply to this version.
+This diagnostic checks IOU's actual addon-message connection. It does not create agreements or change your ledger. Use **0.3.2 or later** on both clients. It uses protocol 2, prefix `IOU_LINKv2`, and pipe-free plain text; a 0.3.1 diagnostic cannot reply to this version.
+
+On 16 October 2026, two live 0.3.2 clients on Forever 1.60.1/build 70425 completed all four exact round trips. Their reports confirm ASCII, Norwegian UTF-8, and 239/240-byte packets survived this logged-whisper path while the broad outgoing restriction flag was true. This establishes those tested sizes in that session, not the client's maximum payload or every network condition. If Shared already works, repeating this diagnostic is optional.
 
 An ordinary chat whisper only checks chat. IOU checks its own addon messages and measures the text for you; you do not need to count bytes or type special characters.
 
@@ -27,7 +29,7 @@ Check that both players are online, entered the other's full name, clicked **Lis
 
 The report also includes an automatic local preflight. That checks the local setup only. Testing against your own character is blocked so it cannot be mistaken for a successful two-player test.
 
-The report counts diagnostic-prefix events, selected-peer whispers, recognized probes, and reasons for ignored traffic. A capped metadata sample contains channel/sender/target/byte size, never unknown payload text. This distinguishes absent events from rejected names, channels, or frames. The old pipe separators are a suspected compatibility issue; the new format still needs a live retry, even though Shared traffic worked in the reported session.
+The report counts diagnostic-prefix events, selected-peer whispers, recognized probes, and reasons for ignored traffic. A capped metadata sample contains channel/sender/target/byte size, never unknown payload text. This distinguishes absent events from rejected names, channels, or frames. The old pipe separators remain a suspected compatibility issue; the later successful protocol-2 test does not by itself prove the cause of the protocol-1 failure.
 
 `Listening: OFF` with only local preflight results means no two-player test has run. A copied report includes the last attempted player/action, its blocking error, and both current and captured restriction states. `AreOutgoingAddonChatMessagesRestricted` is advisory here: that broad realm flag can be true even when addon comms work. Actual `InChatMessagingLockdown` and native logged-send failures still stop messages. Wait for a real lockdown to clear before retrying. IOU never switches to ordinary whispers or unlogged addon messages.
 

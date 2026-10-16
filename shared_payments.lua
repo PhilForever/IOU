@@ -153,7 +153,7 @@ function P.View(store,parentId,closedPaused)
     return viewValidated(store,parentId,closedPaused)
 end
 
-function P.Validate(store, closedPaused)
+local function views(store, closedPaused)
     local valid, err = S.Validate(store)
     if not valid then return nil, err end
     if closedPaused ~= nil and (type(closedPaused) ~= "table" or getmetatable(closedPaused) ~= nil) then return nil, "Invalid local review records." end
@@ -165,13 +165,24 @@ function P.Validate(store, closedPaused)
             if not parentBinding(parent,original,terms) then return nil, "A shared financial event has no matching committed parent." end
         end
     end
+    local result={}
     for id, offer in pairs(store.offers) do
         local terms = C.ParseTerms(offer.terms)
         if terms.kind == "GOLD_OBLIGATION" then
             local view, problem = viewValidated(store,id,closedPaused)
             if not view then return nil, problem end
+            result[id]=view
         end
     end
+    return result
+end
+
+-- A backup compares several original agreements. Validate each whole source
+-- once, rather than re-decoding every retained message for every displayed row.
+function P.Views(store, closedPaused) return views(store,closedPaused) end
+function P.Validate(store, closedPaused)
+    local result,err=views(store,closedPaused)
+    if not result then return nil,err end
     return true
 end
 

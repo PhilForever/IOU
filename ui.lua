@@ -770,6 +770,7 @@ function IOU.ShowBackup(mode)
         local f = window("IOUBackupWindow", 736, 556)
         UI.backup = f
         font(f, 21, 22, -21, 660, "Personal ledger backups", GOLD)
+        f.shared = button(f, "Shared backups", 150, 364, -21, function() IOU.ShowSharedBackup() end)
         button(f, "Before upgrade", 150, 528, -21, function()
             local previous = IOU.MigrationExport()
             if not previous then f.status:SetText("No older-format ledger was upgraded for this character."); return end
@@ -927,4 +928,4 @@ end
 
 -- The shared agreement view uses the same ordinary frame styling and controls.
 UI.Helpers = {font=font, panel=panel, button=button, edit=edit, scroll=scroll,
-    window=window, literal=literal, moneyFields=moneyFields}
+    window=window, literal=literal, moneyFields=moneyFields, multiline=multiline}

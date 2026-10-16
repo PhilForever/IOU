@@ -94,9 +94,9 @@ local function validateEntry(value, owner)
         or value.version ~= 1 or type(value.nonce) ~= "string" or #value.nonce < 1 or #value.nonce > 40
         or not value.nonce:match("^[A-Za-z0-9_-]+$") or not integer(value.counter, MAX_COUNTER)
         or not tablePlain(value.closedPaused) then return nil, "Invalid shared storage wrapper." end
-    if type(P) ~= "table" or type(P.Validate) ~= "function" then return nil, "The shared payment domain is unavailable." end
-    local ok, err = P.Validate(value.store,value.closedPaused)
-    if not ok then return nil, err end
+    if type(P) ~= "table" or type(P.Views) ~= "function" then return nil, "The shared payment domain is unavailable." end
+    local views, err = P.Views(value.store,value.closedPaused)
+    if not views then return nil, err end
     if value.store.localName ~= owner then return nil, "Shared records belong to another character; they were left untouched." end
     for _, offer in pairs(value.store.offers) do
         if not integer(offer.createdAt, MAX_TIME) or not integer(offer.updatedAt, MAX_TIME) then return nil, "Shared offer timestamp is outside the client date range." end
@@ -113,7 +113,7 @@ local function validateEntry(value, owner)
             or not reasonValid(tombstone.reason, offer) then return nil, "Invalid closed-offer review record." end
     end
     if count > S.MAX_OFFERS then return nil, "Too many closed-offer records." end
-    return true
+    return true, views
 end
 local function namespace()
     if not tablePlain(IOUDB) then return nil, "Saved data is unavailable." end
@@ -121,9 +121,13 @@ local function namespace()
     if map ~= nil and not tablePlain(map) then return nil, "Shared character storage is invalid; it was left untouched." end
     return map or false
 end
-local function persist(candidate)
-    local ok, err = validateEntry(candidate, localName)
-    if not ok then return nil, err end
+local function persist(candidate, validated)
+    -- Only private recovery candidates already validated in this same operation
+    -- use the fast path. Live/external records always pass validateEntry.
+    if not validated then
+        local ok, err = validateEntry(candidate, localName)
+        if not ok then return nil, err end
+    end
     local map, problem = namespace()
     if map == nil then return nil, problem end
     if entry and (not map or rawget(map, character) ~= entry) then
@@ -206,7 +210,7 @@ local function current()
     if not map or rawget(map, character) ~= entry then return fail("Shared saved data changed outside this session; it was left untouched.") end
     ok, err = validateEntry(entry, localName)
     if not ok then return fail("Shared saved data was left untouched: " .. tostring(err)) end
-    return entry
+    return entry, nil, err
 end
 function V.IsEnabled()
     local w = wire()
@@ -216,6 +220,8 @@ function V.GetPeer() return V.IsEnabled() and peer or nil end
 local function enabled()
     local value, err = current()
     if not value then return nil, err end
+    local pending, problem = V.IsRecoveryPending()
+    if pending then return reject(problem or "Review the staged Shared recovery before enabling communication.") end
     if not V.IsEnabled() then return reject("Enable sharing for this player first.") end
     return value
 end
@@ -267,6 +273,10 @@ function V.List()
 end
 function V.GetStatus()
     if failure then return failure end
+    if entry then
+        local pending, problem = V.IsRecoveryPending()
+        if pending then return problem or "Shared recovery needs review. Sharing stays off until you restore missing history or keep current records." end
+    end
     if needsPause then return "Sharing is off; recovery is pending. Unfinished offers must pause before reconnecting. " .. (notice or "") end
     if notice then return notice end
     if not entry then return "Shared agreements have not been opened." end
@@ -324,6 +334,8 @@ end
 function V.Enable(other)
     local value, err = current()
     if not value then return nil, err end
+    local pending, recoveryError = V.IsRecoveryPending()
+    if pending then return reject(recoveryError or "Open Shared backups and review the staged recovery before enabling sharing.") end
     local target, problem = peerName(other)
     if not target then return reject(problem) end
     if peer and not V.IsEnabled() then peer=nil; needsPause=true end
@@ -446,6 +458,8 @@ function V.Retry(id) return mutate(S.Retry,id) end
 function V.ClosePaused(id, reason)
     local value, err = current()
     if not value then return nil, err end
+    local pending, recoveryError = V.IsRecoveryPending()
+    if pending then return reject(recoveryError or "Review the staged Shared recovery before changing paused offers.") end
     if V.IsEnabled() then return reject("Disable sharing before reviewing a paused offer.") end
     local offer = value.store.offers[id]
     if not offer or offer.state ~= "PAUSED" then return reject("Only a paused offer can be closed locally.") end
@@ -466,6 +480,342 @@ function V.ClosePaused(id, reason)
     notice = nil
     changed()
     return offerSnapshot(entry,id)
+end
+
+-- Shared backups are local snapshots, never wire messages. Recovery is staged
+-- separately so even committed records cannot send until the player reviews it.
+local function backupCodec()
+    local b = IOU.SharedBackup
+    if type(b) ~= "table" or type(b.Encode) ~= "function" or type(b.Decode) ~= "function" then
+        return nil, "The Shared backup codec is unavailable."
+    end
+    return b
+end
+local function snapshotText(value, stamp)
+    local b, err = backupCodec()
+    if not b then return nil, err end
+    return b.Encode({version=1, character=character, owner=localName, exportedAt=stamp, entry=value})
+end
+-- Only immutable text snapshots are cached, never live SavedVariables. Decoded
+-- trees stay private and are cloned before adoption or inclusion in a public
+-- preview. Two entries and an 8 MiB total key budget bound retained memory.
+local snapshotCache={}
+local function cacheSnapshot(text,snapshot,views)
+    table.insert(snapshotCache,1,{text=text,snapshot=snapshot,views=views})
+    local bytes=0
+    for index=#snapshotCache,1,-1 do
+        if index>2 then table.remove(snapshotCache,index) end
+    end
+    for index=1,#snapshotCache do bytes=bytes+#snapshotCache[index].text end
+    while bytes>8388608 and #snapshotCache>0 do
+        bytes=bytes-#snapshotCache[#snapshotCache].text
+        table.remove(snapshotCache)
+    end
+end
+local function readSnapshot(text)
+    local b, err = backupCodec()
+    if not b then return nil, err end
+    if plain(text) and type(text) == "string" then
+        for index,item in ipairs(snapshotCache) do
+            if item.text == text and item.snapshot.character == character and item.snapshot.owner == localName then
+                table.remove(snapshotCache,index); table.insert(snapshotCache,1,item)
+                return item.snapshot,nil,item.views
+            end
+        end
+    end
+    local snapshot
+    snapshot, err = b.Decode(text)
+    if not snapshot then return nil, err end
+    if snapshot.character ~= character or snapshot.owner ~= localName then
+        return nil, "Use this character's own Shared backup. Another character's export cannot supply your consent."
+    end
+    local ok, views = validateEntry(snapshot.entry, localName)
+    if not ok then return nil, "Invalid Shared backup: " .. tostring(views) end
+    cacheSnapshot(text,snapshot,views)
+    return snapshot, nil, views
+end
+local function same(a,b)
+    if type(a) ~= type(b) then return false end
+    if type(a) ~= "table" then return a == b end
+    for key, item in pairs(a) do if not same(item,b[key]) then return false end end
+    for key in pairs(b) do if a[key] == nil then return false end end
+    return true
+end
+local function recoveryMap()
+    if not tablePlain(IOUDB) then return nil,"Saved data is unavailable; Shared recovery was left untouched." end
+    local map = rawget(IOUDB, "sharedRecoveryByCharacter")
+    if map ~= nil and not tablePlain(map) then return nil, "Shared recovery storage is invalid; it was left untouched." end
+    return map or false
+end
+local function recoveryRecord(decode)
+    local map, err = recoveryMap()
+    if map == nil then return nil, err end
+    if not map then return false end
+    local record = rawget(map,character)
+    if record == nil then return false end
+    if not exactKeys(record,{version=true,owner=true,character=true,at=true,resolvedAt=true,status=true,base=true,backup=true})
+        or record.version ~= 1 or record.owner ~= localName or record.character ~= character
+        or not integer(record.at,MAX_TIME) or not integer(record.resolvedAt,MAX_TIME)
+        or (record.status ~= "PENDING" and record.status ~= "RESTORED" and record.status ~= "KEPT")
+        or (record.status == "PENDING" and record.resolvedAt ~= 0)
+        or (record.status ~= "PENDING" and record.resolvedAt < record.at)
+        or type(record.base) ~= "string" or type(record.backup) ~= "string"
+        or #record.base > 8388608 or #record.backup > 8388608 then
+        return nil, "Shared recovery storage is invalid; it was left untouched."
+    end
+    -- The hot communication gate only needs the validated status shell. Large
+    -- historical snapshots are decoded when opened or acted on, never per frame.
+    if not decode then return record end
+    local base, problem = readSnapshot(record.base)
+    if not base then return nil, "The recovery's previous records are invalid: " .. tostring(problem) end
+    local imported, importedViews
+    imported, problem, importedViews = readSnapshot(record.backup)
+    if not imported then return nil, "The recovery's imported snapshot is invalid: " .. tostring(problem) end
+    return record, nil, imported, base, importedViews
+end
+function V.IsRecoveryPending()
+    -- Do not initialize or send while merely checking the recovery gate.
+    if not entry then return false end
+    local record, err = recoveryRecord()
+    if record == nil then return true, err end
+    return record and record.status == "PENDING" or false
+end
+function V.HasRecovery()
+    if not entry then return false end
+    local record, err=recoveryRecord()
+    return record ~= nil and record ~= false, err
+end
+local function hasPending(store)
+    for _,offer in pairs(store.offers) do
+        if offer.state == "OFFER_OPEN" or offer.state == "OFFER_RECEIVED"
+            or offer.state == "ACCEPT_PENDING" or offer.state == "DECLINE_PENDING" then return true end
+    end
+    return false
+end
+local function buildPreview(value, imported, stamp, currentViews, backupViews)
+    local other = imported.entry
+    local result = {owner=localName, character=character, exportedAt=imported.exportedAt,
+        total=0, missing=0, identical=0, different=0, currentOnly=0, closedAdded=0, rows={}, balances={}}
+    local candidate = clone(value)
+    local unresolvedPeers={}
+    for id,offer in pairs(value.store.offers) do
+        local terms=C.ParseTerms(offer.terms)
+        if terms.kind == "GOLD_OBLIGATION" and (offer.state == "OFFER_OPEN" or offer.state == "OFFER_RECEIVED"
+            or offer.state == "ACCEPT_PENDING" or offer.state == "DECLINE_PENDING"
+            or offer.state == "PAUSED" and not value.closedPaused[id]) then
+            unresolvedPeers[offerPeer(offer)]=true
+        end
+    end
+    local parallelConflict
+    for id, offer in pairs(other.store.offers) do
+        result.total=result.total+1
+        local existing = value.store.offers[id]
+        local classification
+        if not existing then
+            classification="missing"; result.missing=result.missing+1
+            candidate.store.offers[id]=clone(offer)
+            local terms=C.ParseTerms(offer.terms)
+            if terms.kind == "GOLD_OBLIGATION" and unresolvedPeers[offerPeer(offer)] then
+                parallelConflict="Review the current unfinished agreement with " .. offerPeer(offer)
+                    .. " before adding another original agreement from a backup."
+            end
+        elseif same(existing,offer) and same(value.closedPaused[id],other.closedPaused[id]) then
+            classification="identical"; result.identical=result.identical+1
+        else
+            classification="different"; result.different=result.different+1
+        end
+        result.rows[#result.rows+1]={offerId=id,classification=classification,
+            backup=clone(offer),current=existing and clone(existing) or nil,
+            backupClosed=other.closedPaused[id] and clone(other.closedPaused[id]) or nil,
+            currentClosed=value.closedPaused[id] and clone(value.closedPaused[id]) or nil}
+        -- Existing closures always win. A missing closure can be recovered only
+        -- for the same paused offer/terms, without replacing its retained consent.
+        local closed=other.closedPaused[id]
+        local kept=candidate.store.offers[id]
+        if closed and not candidate.closedPaused[id] and kept.state == "PAUSED"
+            and (not existing or same(existing,offer)) and closed.at >= kept.updatedAt then
+            candidate.closedPaused[id]=clone(closed)
+            result.closedAdded=result.closedAdded+1
+        end
+    end
+    for id, offer in pairs(value.store.offers) do
+        if not other.store.offers[id] then
+            result.currentOnly=result.currentOnly+1
+            result.rows[#result.rows+1]={offerId=id,classification="currentOnly",current=clone(offer),
+                currentClosed=value.closedPaused[id] and clone(value.closedPaused[id]) or nil}
+        end
+    end
+    table.sort(result.rows,function(a,b) return a.offerId < b.offerId end)
+    candidate.store.serial=math.max(candidate.store.serial,other.store.serial)
+    if candidate.nonce == other.nonce then candidate.counter=math.max(candidate.counter,other.counter) end
+    local paused, err
+    if parallelConflict then err=parallelConflict
+    elseif not stamp then err="A valid client clock is required before restoring."
+    elseif imported.exportedAt > stamp then err="The backup date is ahead of the client clock. Correct the clock before restoring."
+    else
+        for _, offer in pairs(other.store.offers) do
+            if offer.updatedAt > stamp then err="Backup history is ahead of the client clock. Correct the clock before restoring."; break end
+        end
+        if not err and hasPending(candidate.store) then
+            local problem
+            paused,problem=S.Pause(candidate.store,stamp)
+            if not paused then err=problem end
+        elseif not err then paused=candidate.store
+        end
+    end
+    local candidateViews
+    if paused then
+        candidate.store=paused
+        local ok, problem=validateEntry(candidate,localName)
+        if not ok then err=problem else candidateViews=problem end
+    end
+    if err then result.problem="The combined history cannot be restored: " .. tostring(err) end
+    result.canRestore=not result.problem
+    currentViews=currentViews or P.Views(value.store,value.closedPaused)
+    backupViews=backupViews or P.Views(other.store,other.closedPaused)
+    for _, row in ipairs(result.rows) do
+        local old=currentViews and currentViews[row.offerId]
+        local saved=backupViews and backupViews[row.offerId]
+        local merged=candidateViews and candidateViews[row.offerId]
+        if old or saved or merged then
+            local source=old and row.current or row.backup or row.current
+            local terms=C.ParseTerms(source.terms)
+            local function amount(view) return view and view.confirmed and view.remainingCopper or nil end
+            result.balances[#result.balances+1]={offerId=row.offerId,
+                peer=terms.proposer == localName and terms.recipient or terms.proposer,
+                currentCopper=amount(old),backupCopper=amount(saved),candidateCopper=amount(merged),
+                currentState=old and old.state,backupState=saved and saved.state,candidateState=merged and merged.state}
+        end
+    end
+    result.currentFingerprint=snapshotText(value,0)
+    if not result.currentFingerprint then return nil,"The current Shared records could not be snapshotted." end
+    return result, candidate
+end
+function V.ExportBackup()
+    local value, err=current()
+    if not value then return nil,err end
+    local stamp
+    stamp,err=now()
+    if not stamp then return nil,err end
+    return snapshotText(value,stamp)
+end
+function V.PreviewBackup(text)
+    local value, err, currentViews=current()
+    if not value then return nil,err end
+    local imported, backupViews
+    imported,err,backupViews=readSnapshot(text)
+    if not imported then return nil,err end
+    local preview, problem=buildPreview(value,imported,now(),currentViews,backupViews)
+    if not preview then return nil,problem end
+    return preview
+end
+local function reviewRecord(record, imported, currentViews, backupViews)
+    local preview, err=buildPreview(entry,imported,now(),currentViews,backupViews)
+    if not preview then return nil,err end
+    local unchanged=preview.currentFingerprint == record.base
+    local problem=record.status == "PENDING" and not unchanged
+        and "Current Shared records changed after staging. Keep current records, then preview again." or preview.problem
+    return {status=record.status,owner=record.owner,character=record.character,exportedAt=imported.exportedAt,
+        at=record.at,resolvedAt=record.resolvedAt,preview=preview,
+        token={backup=record.backup,base=record.base,at=record.at},
+        canRestore=unchanged and preview.canRestore,problem=problem}
+end
+function V.GetRecovery()
+    local value, err, currentViews=current()
+    if not value then return nil,err end
+    local record, problem, imported, _, backupViews=recoveryRecord(true)
+    if record == nil then return nil,problem end
+    if record == false then return nil end
+    return reviewRecord(record,imported,currentViews,backupViews)
+end
+function V.StageRecovery(text, expectedCurrent)
+    local value, err=current()
+    if not value then return nil,err end
+    local pending, problem=V.IsRecoveryPending()
+    if pending then return reject(problem or "Review the already staged Shared recovery first.") end
+    local imported, backupViews
+    imported,err,backupViews=readSnapshot(text)
+    if not imported then return nil,err end
+    if type(expectedCurrent) ~= "string" or snapshotText(value,0) ~= expectedCurrent then
+        return reject("Shared records changed after the preview. Preview this backup again.")
+    end
+    local stamp
+    stamp,err=now()
+    if not stamp then return nil,err end
+    local paused
+    if hasPending(value.store) then paused,err=S.Pause(value.store,stamp) else paused=clone(value.store) end
+    if not paused then return nil,err end
+    local candidate=clone(value); candidate.store=paused
+    local ok, candidateViews
+    ok,candidateViews=validateEntry(candidate,localName)
+    if not ok then return nil,candidateViews end
+    local base, backup=snapshotText(candidate,0),snapshotText(imported.entry,imported.exportedAt)
+    if not base or not backup then return reject("The recovery snapshot could not be encoded; nothing was changed.") end
+    local map
+    map,err=recoveryMap()
+    if map == nil then return reject(err) end
+    local prior, priorError=recoveryRecord()
+    if prior == nil then return reject(priorError) end
+    local record={version=1,owner=localName,character=character,at=stamp,resolvedAt=0,
+        status="PENDING",base=base,backup=backup}
+    -- Everything is validated before disconnecting. There are no queue sends,
+    -- callbacks or user code between the two SavedVariables assignments.
+    stopWire()
+    ok,err=persist(candidate,true)
+    if not ok then return fail(err) end
+    if not map then map={}; IOUDB.sharedRecoveryByCharacter=map end
+    map[character]=record
+    needsPause,notice=false,nil
+    local review=reviewRecord(record,imported,candidateViews,backupViews)
+    changed()
+    return review
+end
+function V.ResolveRecovery(choice, token)
+    local value, err, currentViews=current()
+    if not value then return nil,err end
+    local record, problem, imported, _, backupViews=recoveryRecord(true)
+    if not record then return reject(problem or "There is no Shared recovery to review.") end
+    if record.status ~= "PENDING" then return reject("This Shared recovery has already been reviewed.") end
+    if not exactKeys(token,{backup=true,base=true,at=true}) or token.backup ~= record.backup
+        or token.base ~= record.base or token.at ~= record.at then
+        return reject("The staged recovery changed. Open its review again.")
+    end
+    if choice ~= "restore" and choice ~= "keep" then return reject("Choose restore missing history or keep current records.") end
+    local stamp
+    stamp,err=now()
+    if not stamp or stamp < record.at then return reject(err or "The clock precedes the staged recovery.") end
+    local candidate=value
+    if choice == "restore" then
+        if snapshotText(value,0) ~= record.base then return reject("Current Shared records changed after staging. Keep current records and preview again.") end
+        local preview
+        preview,candidate=buildPreview(value,imported,stamp,currentViews,backupViews)
+        if not preview then return reject(candidate) end
+        if not preview.canRestore then return reject(preview.problem) end
+    end
+    local resolved=clone(record)
+    resolved.status=choice == "restore" and "RESTORED" or "KEPT"
+    resolved.resolvedAt=stamp
+    local map
+    map,err=recoveryMap()
+    if map == nil or not map or map[character] ~= record then return reject(err or "The recovery changed outside this session.") end
+    if choice == "restore" then
+        local ok
+        ok,err=persist(candidate,true)
+        if not ok then return fail(err) end
+    end
+    map[character]=resolved
+    notice=nil
+    changed()
+    return true
+end
+function V.ExportRecovery(which)
+    local value, err=current()
+    if not value then return nil,err end
+    local record, problem=recoveryRecord()
+    if not record then return nil,problem or "No previous Shared recovery is available." end
+    if which == "backup" then return record.backup end
+    if which == "before" then return record.base end
+    return nil,"Choose the imported backup or the records before recovery."
 end
 
 -- Wire changes (including asynchronous native send errors) refresh the UI, but

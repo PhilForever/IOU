@@ -1,8 +1,8 @@
 # Shared Agreements development
 
-Version **0.3.0** includes `IOU.SharedCodec`, `IOU.Shared`, and `IOU.SharedPayments`, plus the wire, persistence service, and opt-in consent/payment UI developed in the preceding prereleases. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
+Version **0.4.0** adds `IOU.SharedBackup` and staged recovery to `IOU.SharedService`, alongside the existing codec, state engine, payment domain, wire, and consent UI. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
 
-The personal ledger remains separate. See the [player guide](shared-agreements.md) for the current experimental UI and the [protocol specification](shared-agreements-protocol.md) for invariants and remaining work. Live client behavior remains unverified.
+The personal ledger remains separate. See the [player guide](shared-agreements.md) and [protocol specification](shared-agreements-protocol.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement; 0.4.0 recovery remains pending an in-game check.
 
 ## State API
 
@@ -27,7 +27,7 @@ Stores hold at most **32 retained offers**. Reaching capacity rejects new work w
 
 Offer states are `OFFER_OPEN`, `OFFER_RECEIVED`, `ACCEPT_PENDING`, `DECLINE_PENDING`, `COMMITTED`, `DECLINED`, `WITHDRAWN`, and `PAUSED`. Delivery progress is a separate field. An acknowledgment tells the proposer that the recipient processed its commit; it does not establish that money changed hands.
 
-The service calls `Pause` on startup and disconnect before allowing shared work to resume. Paused offers cannot automatically retry or accept. Local reviewed-offer tombstones preserve old evidence, and unresolved paused offers block replacements with the same peer. A peer message never restores missing local consent. Shared backup/import remains unimplemented.
+The service calls `Pause` on startup and disconnect before allowing shared work to resume. Paused offers cannot automatically retry or accept. Local reviewed-offer tombstones preserve old evidence, and unresolved paused offers block replacements with the same peer. A peer message never restores missing local consent. Shared backups recover only validated evidence from the same exact character's own snapshot.
 
 ## Codec API
 
@@ -100,7 +100,7 @@ python tools/test_iou.py
 
 `tools/test_shared.lua` covers the codec and two independent stores, dropped and duplicated messages, reordered terminal outcomes, spoofed roles and senders, changed terms, bounded records, and loss of local consent. It also verifies that the foundation cannot invoke network or game APIs and that input stores remain unchanged on rejection.
 
-Next work includes dedicated shared backup/reconciliation, followed by broader agreement kinds. Actual logged-whisper delivery, Forever sender identity, rendering, and client persistence remain unverified; record live evidence separately from simulations when testing resumes.
+Next work includes simplifying connection/incoming-offer interactions, followed by broader agreement kinds and richer peer reconciliation. Keep live evidence separate from simulations; the completed 0.3.2 pilot does not verify 0.4.0 recovery or all client/persistence conditions.
 
 ## Shared payment domain
 
@@ -113,3 +113,26 @@ Legacy protocol-1 `GOLD_OBLIGATION` terms remain byte-identical. Protocol-2 `GOL
 Payments must not exceed remaining copper. Corrections target one locally confirmed and unreversed payment and reverse it in full. From 0.3.2, an omitted reason becomes "No reason provided" before canonical terms are built. Stored terms remain nonblank and exact, with no protocol/schema migration. Reversing a correction or the same payment twice is invalid. Capacity checks reserve all handshake envelopes before retention. The service validates the financial graph on load and every staged mutation before persistence. Both peers need a build supporting financial events.
 
 `shared_payment_ui.lua` binds drafts to exact parent terms, peer, and canonical base; correction drafts additionally bind an explicitly selected payment's terms. Review displays the full original terms and exact prior chain. Tests cover this with `test_shared_payment_codec.lua`, `test_shared_payments.lua`, `test_shared_payment_integration.lua`, and mocked UI interactions.
+
+## Shared backup and recovery API
+
+`SharedBackup.Encode(snapshot)` returns `IOUS1:` text and `Decode(text)` returns detached data. `Canonical(snapshot)` exposes the raw canonical typed tree; `ValidateEnvelope(snapshot)` checks only the versioned envelope. The service must additionally validate the exact wrapper, owner/key, bounded timestamps, full consent graph, and financial graph. See [format limits and player recovery](shared-backups.md).
+
+| Service method | Behavior |
+| --- | --- |
+| `ExportBackup()` | Export the current validated Shared wrapper; no traffic. |
+| `PreviewBackup(text)` | Validate this character's snapshot and return record/balance comparisons plus a current fingerprint. No persistence or traffic after normal initialization. |
+| `StageRecovery(text, currentFingerprint)` | Recheck the source/current binding, save both snapshots, disconnect, pause unfinished offers, and persist the recovery gate. |
+| `IsRecoveryPending()` | Check the bounded recovery status shell without decoding large snapshots on the hot path. Invalid shell blocks communication. |
+| `HasRecovery()` | Check whether the latest recovery exists without building a preview; used for button availability. |
+| `GetRecovery()` | Detached latest review, status, preview, exact token, and restore availability. |
+| `ResolveRecovery("restore" or "keep", token)` | Explicitly adopt a valid add-missing union or retain current records. Neither enables/sends. |
+| `ExportRecovery("backup" or "before")` | Copy the imported snapshot or pre-staging records from the latest recovery. |
+
+The optional sidecar is `IOUDB.sharedRecoveryByCharacter[IOU.Character()] = {version=1, owner, character, at, resolvedAt, status, base, backup}`. `base` is a canonical baseline snapshot with export time zero; `backup` preserves the imported timestamp. Status is `PENDING`, `RESTORED`, or `KEPT`. One latest pair is retained per character. Existing version-1 wrappers and personal schema 2 are unchanged.
+
+All current offer IDs win over differing imported versions. Missing offers and exact-evidence missing closure markers may be added; current markers and current-only records survive. Nonce stays local; counters advance to the larger value only for a matching nonce, while store serial always uses the maximum. An imported original is blocked beside an unfinished current original for the same peer until that current offer is reviewed. The complete union must validate atomically before adoption. Unfinished restored offers pause; committed records retain historical evidence but cannot communicate during review. No acceptance is reconstructed from a peer snapshot or from terms without local evidence.
+
+`SharedPayments.Views(store,closedPaused)` validates one whole source and returns all derived original-agreement balances. Recovery compares three sources without repeatedly decoding the entire store for every displayed row. Complexity/byte limits bound the backup parser; expensive snapshot parsing is confined to explicit export/review/recovery actions.
+
+The service reuses derived views only within an operation and caches at most two successfully validated immutable text snapshots, with an 8 MiB combined text-key budget. Cached trees/views stay private and are cloned before adoption or public preview. Current SavedVariables always revalidate; future-date and stale-baseline checks run fresh. No live mutable entry is cached.

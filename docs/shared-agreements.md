@@ -1,6 +1,6 @@
 # Shared gold agreements (experimental)
 
-Version **0.3.2** includes payments and corrections under **Shared** or `/iou shared`, fixes window/input stacking, and accepts optional reasons. Existing shared gold agreements are retained. The addon uses the normal Release channel. Live 0.3.1 screenshots show an acknowledged agreement and a declined payment; complete repayments/corrections, focus, and shared persistence still need client verification.
+Version **0.4.0** includes payments, corrections, and separate Shared backups under **Shared** or `/iou shared`. Existing shared gold agreements are retained. The addon uses the normal Release channel. Live 0.3.2 reports show 4/4 exact connection probes; screenshots demonstrate an acknowledged agreement, partial payment, correction, and final settlement. The new backup/recovery flow still needs live verification.
 
 ## Propose and accept
 
@@ -39,7 +39,7 @@ An unresolved paused offer blocks a replacement proposal with that same player. 
 
 Shared data is stored separately under `IOUDB.sharedByCharacter`, keyed by the existing character ledger identity. It survives normal successful logout/reload. As with other SavedVariables, a crash can lose changes made since the last save. Loading validates the current character's wrapper, exact owner, engine records, and review markers. Invalid shared data is left untouched; personal bookkeeping remains available.
 
-Personal backup/import (`IOU1`/`IOU2`) includes only the personal ledger. It does not export, replace, resume, or merge shared agreements. A dedicated shared backup/reconciliation flow is future work. Do not use a personal import as a way to repair a shared mismatch.
+Personal backup/import (`IOU1`/`IOU2`) includes only the personal ledger. It does not export, replace, resume, or merge shared agreements. Use **Shared backups** for the separate `IOUS1:` format. Preview shows differences and balances; staging disconnects sharing and requires a decision even after reload. Restore adds missing history, preserves current versions and review markers, and rejects incompatible combined histories. It does not resolve peer disagreements or create new acceptance. See the [Shared backup guide](shared-backups.md).
 
 ## Commands
 
@@ -49,4 +49,4 @@ Personal backup/import (`IOU1`/`IOU2`) includes only the personal ledger. It doe
 | `/iou shared Amber Stone` | Open with the other player's full name filled in. Sends nothing. |
 | `/iou shared off` | Disconnect and pause unfinished offers. |
 
-The [protocol specification](shared-agreements-protocol.md) and [development guide](shared-development.md) describe the engine and framing. Live testing remains separate from the automated evidence and can be resumed later.
+The [protocol specification](shared-agreements-protocol.md) and [development guide](shared-development.md) describe the engine and framing. Live testing remains separate from the automated evidence.

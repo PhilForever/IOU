@@ -1,8 +1,8 @@
 # Shared Agreements: protocol draft
 
-**Experimental Shared specification for IOU 0.3.0. The normal Release includes acknowledged payments and payment reversals, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
+**Shared specification for IOU 0.4.0. The normal Release includes acknowledged payments/reversals, framed transport, per-character storage, consent UI, and local backup/recovery. The 0.3.2 live pilot demonstrated exact diagnostic round trips and acknowledged financial events; the new recovery UI remains pending live verification.**
 
-This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. The opt-in service and UI support obligations and acknowledged financial events. See the [development API](shared-development.md) and [player guide](shared-agreements.md). The optional [connection test](connection-test.md) remains available when live delivery testing resumes. Shared backup/import remains future work.
+This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. The opt-in service and UI support obligations, acknowledged financial events, and separate Shared snapshots. See the [development API](shared-development.md), [player guide](shared-agreements.md), and [backup guide](shared-backups.md). The optional [connection test](connection-test.md) remains available for diagnosis.
 
 ## Scope and trust
 
@@ -126,7 +126,7 @@ On startup, pause all uncommitted handshakes. Reopening one requires explicit re
 
 If a crash rolls either side back behind known peer state, never reconstruct missing local consent from a peer's COMMIT, STATUS, claimed acceptance, or exported log. The implemented engine rejects incompatible input without changing its store. A future explicit reconciliation workflow must retain and explain the mismatch before reconfirming. It must not create a second counted obligation beside an unresolved one. The foundation has no automatic merge or persisted `NEEDS_REVIEW` transition.
 
-The future shared backup format must include local-role and consent evidence and be explicitly separate from personal `IOU1`/`IOU2` exports. Any shared import or restored snapshot pauses all shared queues and enters manual reconciliation, including previously committed records. Do not resume network actions automatically from a backup.
+The `IOUS1:` Shared backup includes exact local-role and consent evidence and is separate from personal `IOU1`/`IOU2` exports. Only the same exact owner and character storage key can stage it. A staged import saves the source and pre-staging snapshots, stops all Shared queues, pauses unfinished offers, and persists a service-level review gate including committed records. The player explicitly keeps current data or restores a validated add-missing union. Existing versions, current-only records, and local closure evidence survive; differing IDs/terms/history are compared, never overwritten or inferred from matching balances. An incompatible graph or an imported original beside an unresolved current original blocks adoption. Review does not establish fresh peer acceptance, and nothing resumes automatically. Richer two-peer reconciliation remains future work.
 
 ## Storage, limits, and integration
 
@@ -149,7 +149,7 @@ Do not count drafts or pending offers as debt. Shared balances are displayed sep
 3. **Failure simulation:** drop, duplicate, delay, reorder, and corrupt every handshake message; inject foreign senders, changed terms under reused IDs, unknown IDs, saturated queues, malformed UTF-8, and missing success enums. Exercise withdrawal/accept races in both orders.
 4. **Recovery simulation:** reload and simulated loss of unsaved state after each step, plus restoring old backups. Verify missing consent never activates, duplicates never create debt, and pending UI never claims delivery.
 5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes when live testing resumes; simulation results do not establish client compatibility.
-6. **Payment foundation:** IOU 0.3.0 includes mutually acknowledged payments and full payment-reversal events with derived balances, exact historical binding, and simulation coverage. Shared payment UI distinguishes player acknowledgment from independently verified transfer. Dedicated shared backup/reconciliation, amendments, trade assistance, and crafting remain later work. Live testing is deferred. Normal Release distribution does not change the recorded evidence: actual client delivery, rendering, and shared persistence remain unverified.
+6. **Payment foundation:** IOU includes mutually acknowledged payments and full payment-reversal events with derived balances, exact historical binding, and simulation coverage. Shared payment UI distinguishes player acknowledgment from independently verified transfer. A 0.3.2 live session demonstrated partial payment, correction with the optional default reason, and final settlement. Local backup recovery is implemented in 0.4.0 and awaits live verification; amendments, trade assistance, crafting, and richer peer reconciliation remain later work. Normal Release distribution does not expand these evidence claims.
 
 ## Client reference pointers
 

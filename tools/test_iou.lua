@@ -897,7 +897,7 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua",
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua",
         "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
@@ -908,6 +908,8 @@ local function coreSession(config)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_ui.lua"]),"@IOU/shared_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_payment_ui.lua"]),"@IOU/shared_payment_ui.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["shared_backup_ui.lua"]),"@IOU/shared_backup_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
     end
     if config.launcher then

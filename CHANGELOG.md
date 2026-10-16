@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-10-16
+
+- Added separate `IOUS1:` Shared backups containing full agreements, payment/correction history, exact retained consent and messages, and closed-offer review markers. Personal `IOU1`/`IOU2` formats and existing records are unchanged.
+- Added backup previews with current, saved, and proposed balances, including readable comparisons of differing versions.
+- Added staged recovery that disconnects sharing and persists a review gate across reloads. The player explicitly restores missing history or keeps current records before enabling communication again.
+- Recovery preserves existing records, current-only history, review markers, and identifier high-water marks. The complete combined financial graph must validate before any missing records are adopted; incompatible histories remain unchanged.
+- Retained the imported snapshot and the records before the latest recovery for comparison and external copying. No restore resumes messages or invents missing acceptance.
+- Added bounded parser, service recovery, and UI regression checks, and documented the live 0.3.2 connection/payment results.
+
+Validation: Lua 5.1 regressions, two-client simulations, publisher checks, and package validation. Two live 0.3.2 clients completed 4/4 exact ASCII/UTF-8/boundary echoes on Forever build 70425; user screenshots show acknowledged partial payment, a correction with the default optional reason, and final settlement. Those results do not establish live 0.4.0 recovery or a full restart of Shared records. **Fully restart the game after this update because it adds addon files.** Published through the normal Release channel.
+
 ## 0.3.2 — 2026-10-16
 
 - Fixed window stacking so foreground dialogs and their inputs stay above the complete background window, including scroll children. Added opaque backgrounds and immediate click focus for single-line and multiline fields.

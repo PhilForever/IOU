@@ -203,7 +203,8 @@ refresh = function()
     end
     f.status:SetText(literal(f.problem or err or status))
     f.peer:SetEnabled(not enabled); f.target:SetEnabled(not enabled)
-    f.enable:SetEnabled(not enabled); f.stop:SetEnabled(enabled); f.propose:SetEnabled(enabled)
+    local recoveryPending = S.IsRecoveryPending and S.IsRecoveryPending()
+    f.enable:SetEnabled(not enabled and not recoveryPending); f.stop:SetEnabled(enabled); f.propose:SetEnabled(enabled)
     f.page = math.max(1, math.min(f.page or 1, math.max(1, math.ceil(#offers/5))))
     f.pages:SetText("Page " .. f.page .. " / " .. math.max(1, math.ceil(#offers/5)) .. "  -  " .. #offers .. " offers")
     f.previous:SetEnabled(f.page > 1); f.next:SetEnabled(f.page*5 < #offers)
@@ -250,7 +251,7 @@ function IOU.ShowShared(peer)
         UI.shared = f
         f.page=1
         font(f, 24, 22, -22, 650, "Shared agreements", GOLD)
-        font(f, 11, 760, -32, 150, "Opt-in sharing", MUTED)
+        f.backups = button(f, "Shared backups", 156, 754, -24, function() IOU.ShowSharedBackup() end)
         font(f, 12, 24, -66, 896, "Both players choose each other's full name and enable sharing. Offers require explicit review and acceptance.\nKeep this window open while agreeing; closing it disconnects and pauses unfinished offers.", MUTED)
         f.identity = font(f, 11, 24, -112, 896, "", GOLD)
         f.peer = edit(f, 446, 28, -136, 96)

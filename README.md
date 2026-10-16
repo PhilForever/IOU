@@ -4,7 +4,9 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.3.2 fixes overlapping dialogs and text-field focus, makes reasons optional, and updates the connection diagnostic.** Open **Shared** or `/iou shared` to enable communication with one player, propose terms, and review an offer before accepting. The original proposer can then record partial payments, settlement, or a full reversal of one payment; each requires the other player's acknowledgment. Both players should use 0.3.2 for diagnostics. Live screenshots demonstrate an acknowledged Shared agreement and a declined payment; focus, complete repayments/corrections, and shared persistence still need client verification.
+**0.4.0 adds Shared backups and reviewed recovery.** Open **Shared → Shared backups** to export agreements, payments, corrections, and acceptance history. Preview a backup before staging recovery; restore adds missing history while keeping existing records. Sharing stays off until you review the recovery and explicitly reconnect. The [backup guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-backups.md) explains comparisons and conflicts.
+
+Shared gold agreements support proposals, explicit acceptance, partial payments, settlement, and full reversals of individual payments. The original proposer records financial events and the other player acknowledges them. On 0.3.2, two live clients completed all four connection probes and the user demonstrated acknowledged payment, correction, and settlement. The new recovery flow still needs an in-game check.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
@@ -71,6 +73,8 @@ In keybinding settings, find **IOU** and assign the ledger toggle to a key of yo
 IOU stores its data in the account SavedVariable `IOUDB`, with separate personal character ledgers, separate shared-agreement records, and account display/reminder settings. WoW saves it on a successful reload or logout. Updating the addon files keeps those records.
 
 Use **Backups** or `/iou export`, select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's personal agreements and history. Shared agreements are not included in `IOU1`/`IOU2` exports or affected by personal imports. Backups can contain player names and private notes; remove personal information before sharing one in a public issue.
+
+Use **Shared backups** in either backup window or the Shared board for a separate `IOUS1:` export. It includes this character's complete Shared records and local evidence. Restoring requires the same character identity, stages a disconnected review, and adds only missing records after validating the combined history. Existing versions and closed-offer markers are preserved. Different versions remain available for comparison; they are not automatically reconciled with the other player. The original imported snapshot and the records before the most recent recovery remain available to copy. This is a local snapshot, not a signed receipt or a new peer acknowledgment.
 
 To restore a backup, paste it in `/iou import`, choose **Preview import**, review the replacement, and confirm. Import replaces the current character's ledger rather than merging it. Cancelling the preview leaves your data unchanged. **Previous ledger** provides the snapshot taken before the last confirmed replacement; there is one previous snapshot per character.
 
