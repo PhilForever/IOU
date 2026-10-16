@@ -1,6 +1,6 @@
 # Shared Agreements development
 
-Version **0.3.0-alpha.2** introduced `IOU.SharedCodec` and `IOU.Shared`. These pure modules model a gold agreement between two characters. They perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps. **0.3.0-alpha.3** added the wire, persistence service, and experimental consent UI. **0.3.0-alpha.4** adds the pure `IOU.SharedPayments` domain, service integration, and payment/correction UI.
+Version **0.3.0** includes `IOU.SharedCodec`, `IOU.Shared`, and `IOU.SharedPayments`, plus the wire, persistence service, and opt-in consent/payment UI developed in the preceding prereleases. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
 
 The personal ledger remains separate. See the [player guide](shared-agreements.md) for the current experimental UI and the [protocol specification](shared-agreements-protocol.md) for invariants and remaining work. Live client behavior remains unverified.
 
@@ -100,7 +100,7 @@ python tools/test_iou.py
 
 Next work includes dedicated shared backup/reconciliation, followed by broader agreement kinds. Actual logged-whisper delivery, Forever sender identity, rendering, and client persistence remain unverified; record live evidence separately from simulations when testing resumes.
 
-## Shared payment domain (alpha.4)
+## Shared payment domain
 
 `SharedPayments.View(store,parentId,closedPaused)` derives `{originalCopper,paidCopper,remainingCopper,state,events,pendingOfferId,awaitingAck,canPropose,blockReason,baseChain,baseRevision}`. `Validate(store,closedPaused)` validates cross-record financial invariants. `BuildPayment(store,parentId,amount,note,closedPaused)` and `BuildCorrection(store,parentId,paymentId,reason,closedPaused)` build exact protocol-2 terms; they do not mutate stores. The service exposes `GetBalance(parentId)`, `ProposePayment(parentId,amount,note)`, and `ProposeCorrection(parentId,paymentId,reason)` with the same detached-result/third-saved-offer failure contract as `Propose`.
 
@@ -108,6 +108,6 @@ The existing handshake handles payment and correction child offers. Only the ori
 
 Legacy protocol-1 `GOLD_OBLIGATION` terms remain byte-identical. Protocol-2 `GOLD_PAYMENT`/`GOLD_CORRECTION` terms use `IOUST2:` and append `parentAgreementId,parentOfferId,parentCommitId,parentTerms,baseRevision,baseChain,reversesId` after the existing common term fields. `dueUTC` is zero. `baseChain` uses `IOUSC1:` and flat canonical rows `{kind,agreementId,offerId,commitId,amountCopper,note,reversesId}`; `CanonicalChain`/`ParseChain`/`ValidateChain` expose that codec. Prior terms can be reconstructed exactly from these rows and their prefixes without recursively embedding old terms. Full logical messages remain bounded to 4096 bytes.
 
-Payments must not exceed remaining copper. Corrections require a nonblank reason, target one locally confirmed and unreversed payment, and reverse its entire amount. Reversing a correction or the same payment twice is invalid. Capacity checks reserve enough space for all handshake envelopes, including future consent/commit IDs, before an event is retained. The service validates the whole financial graph on load and every staged mutation before persistence. No personal or shared wrapper schema migration is needed. Alpha.3 clients reject event terms; both peers require alpha.4.
+Payments must not exceed remaining copper. Corrections require a nonblank reason, target one locally confirmed and unreversed payment, and reverse its entire amount. Reversing a correction or the same payment twice is invalid. Capacity checks reserve enough space for all handshake envelopes, including future consent/commit IDs, before an event is retained. The service validates the whole financial graph on load and every staged mutation before persistence. No personal or shared wrapper schema migration is needed. Alpha.3 clients reject event terms; both peers should use 0.3.0.
 
 `shared_payment_ui.lua` binds drafts to exact parent terms, peer, and canonical base; correction drafts additionally bind an explicitly selected payment's terms. Review displays the full original terms and exact prior chain. Tests cover this with `test_shared_payment_codec.lua`, `test_shared_payments.lua`, `test_shared_payment_integration.lua`, and mocked UI interactions.

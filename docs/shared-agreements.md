@@ -1,6 +1,6 @@
 # Shared gold agreements (experimental)
 
-Version **0.3.0-alpha.4** adds payments and corrections to the opt-in agreement view under **Shared** or `/iou shared`. Both characters need alpha.4 for payment events; older alpha gold agreements are retained. This is an experimental alpha: automated two-client simulations cover the flow, while actual Forever addon-message delivery and rendering remain unverified.
+Version **0.3.0** includes payments and corrections in the opt-in agreement view under **Shared** or `/iou shared`. Both characters should use 0.3.0; existing shared gold agreements are retained. The addon uses the normal Release channel, while Shared remains experimental: automated two-client simulations cover the flow, and actual Forever addon-message delivery and rendering remain unverified.
 
 ## Propose and accept
 
@@ -15,7 +15,7 @@ The recipient can **Decline** before acceptance. The proposer can **Withdraw** b
 
 ## Payments, settlement, and corrections
 
-The **original agreement proposer** records events in this alpha, regardless of which participant owes the gold. The other participant reviews and accepts each event. A recipient who wants to record a payment should ask the proposer to enter it; there is no automatic payment-request flow.
+The **original agreement proposer** records events, regardless of which participant owes the gold. The other participant reviews and accepts each event. A recipient who wants to record a payment should ask the proposer to enter it; there is no automatic payment-request flow.
 
 Select an agreed gold obligation and use **Record payment** for a partial amount or **Settle balance** for its full remaining balance. The latter captures the current amount; a later balance change invalidates the draft. Add an optional note, then **Send for acknowledgment**. The recipient selects the new payment offer and uses **Review / accept**. Review includes the original obligation, the exact prior event history, and the proposed resulting balance.
 

@@ -242,7 +242,7 @@ function IOU.ShowShared(peer)
         UI.shared = f
         f.page=1
         font(f, 24, 22, -22, 650, "Shared agreements", GOLD)
-        font(f, 11, 760, -32, 150, "Experimental alpha", MUTED)
+        font(f, 11, 760, -32, 150, "Opt-in sharing", MUTED)
         font(f, 12, 24, -66, 896, "Both players choose each other's full name and enable sharing. Offers require explicit review and acceptance.\nKeep this window open while agreeing; closing it disconnects and pauses unfinished offers.", MUTED)
         f.identity = font(f, 11, 24, -112, 896, "", GOLD)
         f.peer = edit(f, 446, 28, -136, 96)

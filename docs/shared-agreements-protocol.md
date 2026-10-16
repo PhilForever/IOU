@@ -1,6 +1,6 @@
 # Shared Agreements: protocol draft
 
-**Experimental specification for the 0.3 development cycle. Alpha.4 adds acknowledged payments and payment reversals to the engine, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
+**Experimental Shared specification for IOU 0.3.0. The normal Release includes acknowledged payments and payment reversals, framed transport, per-character storage, and consent UI; actual client behavior remains unverified.**
 
 This replaces the proposed “Accept Protocol v0.2” design. IOU 0.2 already exists. The pure codec and state engine model explicit acceptance, commitment, decline, withdrawal, retries, and paused recovery. The opt-in service and UI support obligations and acknowledged financial events. See the [development API](shared-development.md) and [player guide](shared-agreements.md). The optional [connection test](connection-test.md) remains available when live delivery testing resumes. Shared backup/import remains future work.
 
@@ -54,9 +54,9 @@ A user-selected due day means **23:59:59 UTC on that day**, explicitly labeled i
 
 The pure API requires caller-supplied agreement and offer IDs, rejects any reuse in its store, and generates message and semantic IDs from a local monotonic counter. Incoming IDs are scoped to the exact peer and offer; they are identifiers, not secrets. The service allocates collision-checked agreement/offer IDs from a per-character nonce and persisted counter. Acceptance binds exact canonical term bytes; fingerprints can be added for diagnostics but cannot replace exact comparison. Same offer ID with different bytes is a rejected conflict.
 
-## Payment and correction terms (alpha.4)
+## Payment and correction terms
 
-An event is a fresh offer using the same explicit PROPOSE/ACCEPT/COMMIT/ACK handshake. Its proposer and participants must match the original obligation. Only that original proposer sequences events, including when the proposer is the debtor. Both peers need alpha.4; protocol-1 obligation bytes remain unchanged.
+An event is a fresh offer using the same explicit PROPOSE/ACCEPT/COMMIT/ACK handshake. Its proposer and participants must match the original obligation. Only that original proposer sequences events, including when the proposer is the debtor. Both peers should use 0.3.0; protocol-1 obligation bytes remain unchanged.
 
 Event terms use `protocol=2`, `kind=GOLD_PAYMENT` or `GOLD_CORRECTION`, and the `IOUST2:` header. After the common fields above, exact ordered fields are `parentAgreementId,parentOfferId,parentCommitId,parentTerms,baseRevision,baseChain,reversesId`. `dueUTC` must be zero. The parent IDs, commitment, complete original canonical terms, and participants are checked against retained local consent.
 
@@ -136,20 +136,20 @@ Keep immutable terms, local role, explicit local consent evidence, acceptance/co
 
 Implemented resource budgets: 32 retained offers total, 4 unreviewed proposals per enabled peer, 32 outbound logical messages/128 packets, 240 bytes per packet, and 32 KiB of reassembly storage. Only one explicitly enabled peer is accepted. A 120-token receive bucket refills at two tokens per second before packet parsing. Other senders produce no inbox or auto-popup. The paged list shows an offer count; it never auto-accepts or interrupts gameplay with incoming popups.
 
-Alpha.3 uses explicit Retry only, with the same retained immutable payload/IDs and a one-packet-per-second queue. Duplicate processing may replay an existing response but never creates another decision; queue limits and receive rate limits bound those responses. Queue saturation gives visible feedback before state replacement. An unexpected enqueue failure after saving returns the saved offer for Retry instead of inviting a second proposal. Any future automatic retry policy must remain bounded and must not reinterpret timeout as a semantic outcome.
+IOU uses explicit Retry only, with the same retained immutable payload/IDs and a one-packet-per-second queue. Duplicate processing may replay an existing response but never creates another decision; queue limits and receive rate limits bound those responses. Queue saturation gives visible feedback before state replacement. An unexpected enqueue failure after saving returns the saved offer for Retry instead of inviting a second proposal. Any future automatic retry policy must remain bounded and must not reinterpret timeout as a semantic outcome.
 
 Retain terminal tombstones while corresponding records exist. A compaction policy may keep compact outcomes instead of full dedupe records; it must never turn an unknown ACCEPT/COMMIT into permission to recreate an agreement. When capacity is reached, pause new proposals and offer explicit archival rather than silently evicting live consent or outcomes.
 
 Do not count drafts or pending offers as debt. Shared balances are displayed separately from personal totals. Future conversion from personal to shared must explicitly link and archive the personal entry after confirmed acceptance so the same obligation is counted once. A failed proposal leaves the personal record untouched.
 
-## Release gates
+## Validation plan and remaining evidence
 
 1. **Connection experiment:** two actual clients, exact observed names, ASCII/Unicode and measured-size echo reports, API result handling, blocked/offline behavior, and stopping after reload. A self-test is local preflight only.
-2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. Alpha.3 implements this path with conservative framing; real client transport behavior remains unverified.
+2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. IOU 0.3.0 implements this path with conservative framing; real client transport behavior remains unverified.
 3. **Failure simulation:** drop, duplicate, delay, reorder, and corrupt every handshake message; inject foreign senders, changed terms under reused IDs, unknown IDs, saturated queues, malformed UTF-8, and missing success enums. Exercise withdrawal/accept races in both orders.
 4. **Recovery simulation:** reload and simulated loss of unsaved state after each step, plus restoring old backups. Verify missing consent never activates, duplicates never create debt, and pending UI never claims delivery.
-5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes before a public shared-agreement release.
-6. **Payment foundation:** alpha.4 adds mutually acknowledged payments and full payment-reversal events with derived balances, exact historical binding, and simulation coverage. Shared payment UI distinguishes player acknowledgment from independently verified transfer. Dedicated shared backup/reconciliation, amendments, trade assistance, and crafting remain later work. Live testing is deferred and does not gate further alpha development; it remains required evidence before claiming client compatibility.
+5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes when live testing resumes; simulation results do not establish client compatibility.
+6. **Payment foundation:** IOU 0.3.0 includes mutually acknowledged payments and full payment-reversal events with derived balances, exact historical binding, and simulation coverage. Shared payment UI distinguishes player acknowledgment from independently verified transfer. Dedicated shared backup/reconciliation, amendments, trade assistance, and crafting remain later work. Live testing is deferred. Normal Release distribution does not change the recorded evidence: actual client delivery, rendering, and shared persistence remain unverified.
 
 ## Client reference pointers
 

@@ -32,7 +32,7 @@ class PublishingTests(unittest.TestCase):
         self.checksum.write_text(hashlib.sha256(self.archive.read_bytes()).hexdigest() + '  ' + self.archive.name + '\n')
 
     def test_release_classification_and_invalid_tags(self):
-        for version, expected in [('0.2.0', 'release'), ('0.3.0-alpha.2', 'alpha'), ('0.3.0-beta.1', 'beta'), ('0.3.0-rc.1', 'beta')]:
+        for version, expected in [('0.2.0', 'release'), ('0.3.0', 'release'), ('0.3.0-alpha.2', 'alpha'), ('0.3.0-beta.1', 'beta'), ('0.3.0-rc.1', 'beta')]:
             self.assertEqual(publisher.release_type(publisher.release_version('v' + version)), expected)
         for tag in ['main', 'v../../x', 'v0.2.0; echo bad', '0.2.0', 'v0.2.0\n']:
             with self.assertRaises(ValueError):

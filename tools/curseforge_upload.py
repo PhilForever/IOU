@@ -21,7 +21,7 @@ TAG = r"v([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)"
 def release_version(tag: str) -> str:
     match = re.fullmatch(TAG, tag)
     if not match:
-        raise ValueError("Use a version tag such as v0.2.0 or v0.3.0-alpha.2.")
+        raise ValueError("Use a version tag such as v0.3.0.")
     return match[1]
 
 

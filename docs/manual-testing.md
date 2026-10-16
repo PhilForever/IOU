@@ -15,21 +15,22 @@ Record the addon version, client build, date, resolution, UI scale, and other ad
 | 0.3.0-alpha.2 | Offline shared-engine/codec simulations plus existing regressions | Exercises acceptance, duplicate and lost-message recovery, withdrawal races, strict input validation, and missing consent. No claim of live shared proposals or persisted shared records. |
 | 0.3.0-alpha.3 | Mocked UI, framing, service persistence, and full two-client packet simulations | Exercises the live-path implementation with mock clients, exact terms review, interruption/recovery, character isolation, queue failures, and malformed shared data. Actual client delivery/rendering/persistence are pending; no live result inferred. |
 | 0.3.0-alpha.4 | Payment codec/domain, mocked UI, and full two-client payment packet simulations, plus existing regressions | Exercises partial payment, settlement, full reversal, exact historical binding, lost ACKs, duplicates, reload, stale drafts, and personal-ledger isolation. Live testing remains deferred while servers are unavailable. |
+| 0.3.0 | The same shared implementation promoted to the normal Release channel; automated regressions, publisher checks, and package validation | Distribution changes do not establish live compatibility. Shared delivery, rendering, and shared-record persistence remain unverified. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
 
-For the alpha, follow the [connection test guide](connection-test.md). Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Capture both private reports, including failures. Verify closing the window or using `/iou test stop` stops traffic, and that listening is off after reload. Personal records must remain unchanged.
+For shared communication, follow the [connection test guide](connection-test.md). Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Capture both private reports, including failures. Verify closing the window or using `/iou test stop` stops traffic, and that listening is off after reload. Personal records must remain unchanged.
 
-The [Shared guide](shared-agreements.md) describes the alpha.4 player flow. When live testing resumes, cover both debtor directions, partial payment, settlement, full reversal with a reason, pending acknowledgment, stale drafts/reviews, decline/withdraw races, reload at each handshake step, retained agreed records, and local review of paused records. Check reduced UI scale and long Unicode notes. Personal totals and personal export/import must remain independent. Live testing is currently deferred; automated simulation is the recorded evidence for this build.
+The [Shared guide](shared-agreements.md) describes the 0.3.0 player flow. When live testing resumes, cover both debtor directions, partial payment, settlement, full reversal with a reason, pending acknowledgment, stale drafts/reviews, decline/withdraw races, reload at each handshake step, retained agreed records, and local review of paused records. Check reduced UI scale and long Unicode notes. Personal totals and personal export/import must remain independent. Live testing is currently deferred; automated simulation is the recorded evidence for this build.
 
 ## Live regression cases
 
-All cases below are **pending live verification for 0.2.0**. Update the record with actual results instead of inferring success from mocks.
+All cases below are **pending live verification for the current release**. Update the record with actual results instead of inferring success from mocks.
 
 | Case | Steps | Expected result |
 | --- | --- | --- |
 | First install | Install the release ZIP with `AddOns/IOU/IOU.toc`, fully restart, enable IOU, and enter `/iou`. | Ledger opens without a Lua error; only this character's data appears. |
-| Upgrade an existing ledger | Keep a private 0.1 export, install 0.2, and log in with existing records. | Names, original amounts, balances, notes, payment events, and corrections are retained. No extra payments appear. |
+| Upgrade an existing ledger | Keep a private export, install the current release, and log in with existing records. | Names, original amounts, balances, notes, payment events, and corrections are retained. No extra payments appear. |
 | Gold and directions | Create one agreement in each direction with gold, silver, and copper. | Entries appear in the correct tabs and summary cards; all balances use exact copper. |
 | Items and favors | Create item and favor agreements. Insert a Shift-click item link into the focused item field. | Labels remain readable, links remain intact, and quantities do not affect gold totals. |
 | Partial payment and settlement | Repay part of an agreement, then settle its remainder. | Balance decreases by the entered amount, history retains both actions, and the settled entry moves to History. Overpayment is rejected. |

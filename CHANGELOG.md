@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-10-16
+
+- Published the shared-agreement features through CurseForge's normal **Release** channel, allowing updates with the app's default release setting.
+- Included opt-in shared gold proposals, explicit acceptance, partial payments, settlement, and reasoned full reversals of individual payments from the preceding prereleases.
+- Retained acknowledged balances, event history, interrupted-offer recovery, and existing personal and shared records without a schema change.
+- Made normal `X.Y.Z` Release versions the publishing default; future prereleases require an explicit owner request.
+
+Validation: Existing Lua 5.1 regressions, mocked UI, simulated two-client payment delivery, publisher checks, and package validation. This release promotes the existing shared implementation; actual Forever delivery, rendering, and shared-record persistence remain unverified. Both players should use 0.3.0 for shared agreements.
+
 ## 0.3.0-alpha.4 — 2026-10-16
 
 - Added mutually acknowledged shared gold payments, settlement of the remaining balance, and reasoned full reversal of individual confirmed payments.
