@@ -2,7 +2,7 @@
 ## Title: IOU
 ## Notes: Your personal debt and favor ledger for Azeroth.
 ## Author: PhilForever
-## Version: 0.7.0
+## Version: 0.8.0
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## X-Website: https://github.com/PhilForever/IOU
 ## X-Curse-Project-ID: 1746575
@@ -17,13 +17,17 @@ shared_payments.lua
 shared_backup.lua
 shared_view.lua
 player_summary.lua
+trade_matching.lua
 core.lua
 transport.lua
 shared_wire.lua
 shared_service.lua
+trade_service.lua
 ui.lua
 shared_ui.lua
 shared_payment_ui.lua
 shared_backup_ui.lua
 launcher.lua
 player_context.lua
+trade_observer.lua
+trade_ui.lua

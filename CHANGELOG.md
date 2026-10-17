@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-10-17
+
+- Added completed-trade observation for exact player names, copper, and item quantities. Clear personal IOU repayments apply automatically, including partial repayment; cancelled, failed, and duplicate trade events do not create payments.
+- Kept item variants, exchanges, multiple eligible records, and possible personal/Shared overlap for review. Excess and unmatched assets never create new IOUs automatically. Shared repayment consent is unchanged.
+- Added compact Trade activity in the main header, Options, and `/iou trades`, with Given/Received summaries, current-balance allocation choices, Dismiss, and Undo. Applied/review notices never open a window, take focus, or print chat messages; ordinary unmatched trades stay quiet.
+- Retained manual actions under More and added an automatic trade repayment preference. Existing ledger events, personal/Shared schemas, and backup formats are preserved; recent trade receipts are separate per-character data.
+
+Validation: trade matching, observer, service, and compact Activity UI regressions plus the existing suites, publisher checks, and package validation. Native trade completion and event ordering still need normal live use; mocked events do not establish a successful client transfer. Mail automation remains planned for 0.9. **Fully restart after updating because this version adds addon files.** Published through the regular Release channel.
+
 ## 0.7.0 — 2026-10-17
 
 - Made Requests available in the main header, with passive review counts. Existing Shared records remain separate from personal IOUs.

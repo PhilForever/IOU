@@ -4,16 +4,16 @@ Target client: **WoW: Forever**, interface `16001`.
 
 Use disposable records when trying financial actions. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
 
-## Normal-use check for 0.7.0
+## Normal-use check for 0.8.0
 
-Personal and Shared debts in the 0.6.0 trade and tooltip reminders were confirmed working by the user. There is no need to repeat that demonstration or send screenshots/exports.
+Personal and Shared debts in the trade and tooltip reminders were confirmed working by the user. The user also reported the 0.7 presentation improved. There is no need to repeat those demonstrations or send screenshots/exports.
 
-Load the update and use the ledger normally:
+Fully restart for the added addon files. Use disposable amounts with a friend:
 
-1. Open an existing personal record. Its balance should be easy to find; history should expand when needed, and **More** should expose the secondary actions. Open New IOU: player, direction, and amount should be usable without filling optional details.
-2. Open **Requests** from the main header and select an existing Shared record. The compact summary should be readable, with retained terms/history available through **Details**. Browsing and expanding information must not change a balance or accept a request.
+1. Add a personal IOU saying your friend owes you 10 silver. Have them successfully trade you 3 silver with nothing sent back. The balance should become 7 silver once. Use **Undo** on the notice or `/iou trades`; it should return to 10 silver.
+2. Try the same flow with a small quantity of a linked crafting item. Cancel a separate trade before completion; cancellation must not change the balance. With two eligible IOUs for that friend, the completed trade should wait for a choice in Trade activity rather than choose a debt silently.
 
-Only report an issue if something feels awkward, is missing, or gives an error. A short description and the full Lua error text are enough. Screenshots and ledger exports are not required. Trade and mail repayments are still manual in 0.7.0; automation is planned separately.
+Report whether the successful gold/item trade reduced the right balance once, cancellation left it unchanged, and Undo restored it. If a trade was not detected, give the client build and the short sequence used. Full Lua error text helps if an error appears. Screenshots, exports, and backup tests are not required. Shared repayments still use confirmation; mail automation is not implemented in 0.8.
 
 ## Validation record
 
@@ -38,6 +38,8 @@ Only report an issue if something feels awkward, is missing, or gives an error. 
 | 0.6.0 | Pure exact-player summary, client-context, and workflow checks plus existing suites | Adds personal-first navigation, target-prefilled creation, read-only tooltip/trade reminders, and window-close session retention. |
 | 0.6.0 live feedback | User report on 17 October 2026 | Personal and Shared IOUs appear in Trade and Tooltip. The user found the addon improved and requested further decluttering. This is sufficient evidence of those live reminders; no repeat screenshots are requested. It does not separately establish every disconnect, failure, or native UI condition. |
 | 0.7.0 | Compact presentation and existing financial/consent regression suites | Shortens the ordinary UI, collapses secondary information, and exposes Requests. No automatic trade/mail balance updates or financial/schema changes. Live usability remains to be assessed through ordinary use. |
+| 0.7.0 live feedback | User report on 17 October 2026 | The user found the addon improved and requested continued automation with less manual input. |
+| 0.8.0 | Trade matching, observer, service, Activity UI, and existing regression suites | Exercises completed/cancelled/failed/duplicate trade observations, exact personal matching, partial/excess amounts, item identity, allocation, Undo, and quiet notices. Native trade completion and event ordering remain pending live use; no automatic Shared consent or mail collection is inferred. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
 

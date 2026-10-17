@@ -10,12 +10,12 @@ This is the development direction, not a claim that future features already work
 | --- | --- | --- |
 | 0.7 — Simplify | Compact amounts, rows, and record details; collapse optional inputs and history; move secondary actions under More; expose Requests in the main window. | Less reading and fewer controls in the ordinary flow. |
 | 0.8 — Trade automation | Observe completed transfers; distinguish cancellation/failure from success; prevent duplicate events; match exact players and items; handle partial repayments, ambiguity, and Undo. | Straightforward trade repayments update existing debts automatically. |
-| 0.9 — Mail and Activity | Match successful outgoing mail and confirmed incoming collection; correlate exact recipients/senders, money, and attachments; add a quiet recent-transfer list and Track as IOU. | Mail repayments update balances; making a new loan from a recent transfer needs one click. |
+| 0.9 — Mail and quick capture | Match successful outgoing mail and confirmed incoming collection; correlate exact recipients/senders, money, and attachments; extend Activity to mail and add Track as IOU. | Mail repayments update balances; making a new loan from a recent transfer needs one click. |
 | 0.10 — Shared redesign | Integrate sharing into an ordinary IOU; support items; provide compact Accept/Decline requests and background synchronization with bounded reconnect behavior. | Shared is an optional part of the ledger rather than a second bookkeeping application. |
 | 0.11 — Crafting and polish | Improve item selection, stacks, quantities, and material bundles; refine multiple-debt matching and player shortcuts. | Lending crafting materials is as convenient as lending gold. |
 | 1.0 — Reliability | Finish upgrade/reload/disconnect handling, duplicate-event protection, mixed trades, mail failure paths, Shared reconciliation, performance, UI scaling, and concise onboarding. | Dependable tracking during ordinary play. |
 
-Version 0.7 changes presentation only. It does not implement automatic trade or mail repayments, migrate financial records, or change Shared consent.
+Version 0.7 simplified presentation. Version 0.8 adds completed-trade observation, exact matching of clear personal repayments, compact allocation review, and Undo. Native completion behavior remains subject to live verification. Mail automation, automatic new-loan capture, and Shared consent changes are not part of 0.8.
 
 ## Automatic repayment rules
 

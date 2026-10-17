@@ -897,8 +897,8 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua","shared_view.lua","player_summary.lua",
-        "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua","shared_view.lua","player_summary.lua","trade_matching.lua",
+        "core.lua","transport.lua","shared_wire.lua","shared_service.lua","trade_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
     end
@@ -912,6 +912,10 @@ local function coreSession(config)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_backup_ui.lua"]),"@IOU/shared_backup_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["player_context.lua"]),"@IOU/player_context.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["trade_observer.lua"]),"@IOU/trade_observer.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["trade_ui.lua"]),"@IOU/trade_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
     end
     if config.launcher then

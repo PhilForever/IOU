@@ -279,6 +279,10 @@ function IOU.RenderSharedAttention(attention)
     if IOU.RenderLauncherAttention then IOU.RenderLauncherAttention(attention) end
 end
 
+function IOU.RenderTradeAttention(count)
+    if UI.tradeButton then UI.tradeButton:SetText(count and count>0 and "Activity ("..count..")" or "Activity") end
+end
+
 local function buildMain()
     if UI.main then return end
     local f = window("IOULedgerWindow", 960, 640)
@@ -300,6 +304,7 @@ local function buildMain()
     end)
     font(f, 31, 22, -18, 180, "IOU", GOLD)
     UI.character = font(f, 12, 24, -55, 600, "", MUTED)
+    UI.tradeButton = button(f, "Activity", 100, 366, -27, function() IOU.ShowTradeActivity() end)
     UI.sharedButton = button(f, "Requests", 104, 476, -27, IOU.OpenSharedAttention)
     button(f, "Options", 104, 590, -27, function() IOU.ShowSettings() end)
     button(f, "Target IOUs", 98, 704, -27, function() IOU.ShowTargetRecords() end)
@@ -422,6 +427,7 @@ function IOU.Refresh(reset)
     if not UI.main then return end
     if UI.moreMenu then UI.moreMenu:Hide() end
     IOU.RenderSharedAttention(sharedAttention())
+    IOU.RenderTradeAttention(IOU.TradeService and type(IOU.TradeService.PendingCount) == "function" and IOU.TradeService.PendingCount() or 0)
     local db = IOU.GetLedger()
     if not db then return end
     if reset then UI.selected, UI.page = nil, 1 end
@@ -1052,7 +1058,7 @@ end
 function IOU.ShowSettings()
     showMain()
     if not UI.settings then
-        local f = window("IOUSettingsWindow", 476, 490)
+        local f = window("IOUSettingsWindow", 476, 532)
         UI.settings = f
         font(f, 21, 22, -22, 410, "IOU settings", GOLD)
         font(f, 11, 24, -63, 420, "These preferences apply across your characters.", MUTED)
@@ -1070,24 +1076,30 @@ function IOU.ShowSettings()
             IOU.GetSettings().tradeReminders = not IOU.GetSettings().tradeReminders
             IOU.PlayerContext.Invalidate(); IOU.ShowSettings()
         end)
-        button(f, "Reset window position", 260, 24, -265, function() IOU.ResetPosition() end)
-        button(f, "Shared agreements", 200, 24, -307, function()
+        f.automatic = button(f, "", 260, 24, -265, function()
+            IOU.GetSettings().autoTradeRepayments = not IOU.GetSettings().autoTradeRepayments
+            IOU.ShowSettings()
+        end)
+        button(f, "Trade activity", 150, 300, -265, function() f:Hide(); IOU.ShowTradeActivity() end)
+        button(f, "Reset window position", 260, 24, -307, function() IOU.ResetPosition() end)
+        button(f, "Shared agreements", 200, 24, -349, function()
             f:Hide(); IOU.OpenSharedAttention()
         end)
-        button(f, "Backups", 200, 242, -307, function()
+        button(f, "Backups", 200, 242, -349, function()
             f:Hide(); IOU.ShowBackup("export")
         end)
-        button(f, "Connection test", 260, 24, -349, function()
+        button(f, "Connection test", 260, 24, -391, function()
             f:Hide(); IOU.ShowConnectionTest()
         end)
-        font(f, 11, 24, -400, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour IOUs remain separate for each character.", MUTED)
-        font(f, 10, 24, -461, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
+        font(f, 11, 24, -442, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour IOUs remain separate for each character.", MUTED)
+        font(f, 10, 24, -503, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
     end
     local f = UI.settings
     f.minimap:SetText("Minimap button: " .. (IOU.GetSettings().minimap and "shown" or "hidden"))
     f.reminders:SetText("Login reminders: " .. (IOU.GetSettings().reminders and "on" or "off"))
     f.tooltips:SetText("Player tooltips: " .. (IOU.GetSettings().playerTooltips and "on" or "off"))
     f.trade:SetText("Trade reminders: " .. (IOU.GetSettings().tradeReminders and "on" or "off"))
+    f.automatic:SetText("Trade repayments: " .. (IOU.GetSettings().autoTradeRepayments and "automatic" or "manual"))
     f:Show()
 end
 

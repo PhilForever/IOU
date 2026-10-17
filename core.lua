@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.7.0"
+IOU.VERSION = "0.8.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -67,6 +67,7 @@ function IOU.Initialize()
     if type(settings.reminders) ~= "boolean" then settings.reminders = true end
     if type(settings.playerTooltips) ~= "boolean" then settings.playerTooltips = true end
     if type(settings.tradeReminders) ~= "boolean" then settings.tradeReminders = true end
+    if type(settings.autoTradeRepayments) ~= "boolean" then settings.autoTradeRepayments = true end
     if type(settings.minimapAngle) ~= "number" or settings.minimapAngle ~= settings.minimapAngle
         or settings.minimapAngle < 0 or settings.minimapAngle > 360 then settings.minimapAngle = 225 end
     local anchors = {TOPLEFT=true, TOP=true, TOPRIGHT=true, LEFT=true, CENTER=true,
@@ -140,6 +141,23 @@ function IOU.Reverse(id, eventID, reason) return mutate(L.Reverse, id, eventID, 
 function IOU.Amend(id, fields, reason) return mutate(L.Amend, id, fields, reason == nil and "" or reason) end
 function IOU.Cancel(id, reason) return mutate(L.Cancel, id, reason == nil and "" or reason) end
 function IOU.Restore(id, reason) return mutate(L.Restore, id, reason == nil and "" or reason) end
+
+-- Financial events and their deduplication receipt are committed together.
+-- Nothing yields between these assignments; UI failures cannot undo a commit.
+function IOU.CommitTradeState(expectedLedger, candidate, expectedTrades, trades)
+    if not ready() then return nil,"The personal ledger is unavailable." end
+    if ledger~=expectedLedger or type(IOUDB.tradesByCharacter)~="table"
+        or IOUDB.tradesByCharacter[character]~=expectedTrades then return nil,"The ledger changed. Review this trade again." end
+    local encoded,err=C.Export(candidate); if not encoded then return nil,err end
+    local changed=encoded~=C.Export(ledger)
+    local staged; staged,err=C.Import(encoded); if not staged then return nil,err end
+    local ok; ok,err=IOU.TradeService.Validate(trades); if not ok then return nil,err end
+    if changed then IOUDB.characters[character]=staged; ledger=staged end
+    IOUDB.tradesByCharacter[character]=trades
+    if changed and IOU.PlayerContext then pcall(IOU.PlayerContext.Invalidate) end
+    if changed and IOU.Refresh then pcall(IOU.Refresh) end
+    return true
+end
 
 function IOU.Export()
     local ok, err = ready()
@@ -224,6 +242,7 @@ local function slash(command)
     elseif command == "test" then IOU.ShowConnectionTest()
     elseif command:match("^test%s+") then IOU.ShowConnectionTest(original:match("^%S+%s+(.+)$"))
     elseif command == "add" then IOU.ShowAdd()
+    elseif command == "trades" then IOU.ShowTradeActivity()
     elseif command == "target" then IOU.ShowTargetRecords()
     elseif command == "export" then IOU.ShowBackup("export")
     elseif command == "import" then IOU.ShowBackup("import")
@@ -235,7 +254,8 @@ local function slash(command)
         IOU.GetSettings().reminders = command == "reminders on"
         IOU.Message("Login reminders " .. (IOU.GetSettings().reminders and "on." or "off."))
     elseif command == "help" then
-        IOU.Message("/iou - ledger; /iou add - new agreement; /iou export - backup; /iou import - restore.")
+        IOU.Message("/iou - ledger; /iou add - new IOU; /iou trades - trade activity.")
+        IOU.Message("/iou export - optional backup; /iou import - restore.")
         IOU.Message("/iou target - target's IOUs; /iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
         IOU.Message("/iou test [full player name] - connection test; /iou test stop - stop listening.")
         IOU.Message("/iou shared [full player name] - shared agreements; /iou shared off - disconnect.")
@@ -256,6 +276,11 @@ events:SetScript("OnEvent", function()
     if IOU.UpdateLauncher then IOU.UpdateLauncher() end
     if IOU.UpdateSharedOverview then IOU.UpdateSharedOverview() end
     if IOU.PlayerContext then IOU.PlayerContext.Initialize() end
+    if IOU.TradeService then
+        local tradeOK,tradeError=IOU.TradeService.Initialize()
+        if tradeOK and IOU.TradeObserver then IOU.TradeObserver.Initialize()
+        elseif not tradeOK then IOU.Message(tradeError) end
+    end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then
         local options = {now = time()}

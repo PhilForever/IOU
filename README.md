@@ -4,7 +4,7 @@ Remember who owes you gold or crafting materials, and what you owe other players
 
 Target a player, click **+ New IOU**, choose the direction and amount, and save. Hovering that player or opening a trade shows the remaining debt. Your own records work even if the other player does not have IOU.
 
-**0.7.0 makes the ledger easier to read:** shorter amounts, compact details, optional fields and history tucked away, and secondary actions under **More**. **Requests** is always accessible from the main window. Personal and Shared records remain separate, with all existing history retained.
+**0.8.0 records straightforward trade repayments automatically.** A completed matching gold or item transfer reduces the personal IOU, with a quiet notice and **Undo**. Ambiguous trades wait in **Trade activity**. Requests, optional details, and history retain the compact 0.7 interface.
 
 [Download on CurseForge](https://www.curseforge.com/wow/addons/iou) · [GitHub Releases](https://github.com/PhilForever/IOU/releases)
 
@@ -22,19 +22,23 @@ Hover the player or open a trade to see what remains. Gold in opposite direction
 
 - **Owed to me**, **I owe**, and **History** separate open debts from completed or cancelled records. Search and type filters help find a record.
 - Select a record for its remaining amount. Expand its history when you need the previous payments or changes.
-- **More...** contains **Record payment** or **Record delivery**, **Mark paid**, **Edit**, and **Cancel IOU** or **Reopen**. To correct a repayment, expand **History** and use **Undo** on that payment. These controls remain available while automatic repayment tracking is developed.
+- **More...** contains manual repayment, editing, cancellation, and reopening for exceptions. To correct an individual repayment, expand **History** and use **Undo** on that payment.
 - **Requests** opens optional Shared gold agreements. Both players need IOU to share; personal records need no connection or acceptance. See the [short Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md).
-- **Options** opens display preferences, optional backups, and the connection diagnostic.
+- **Activity** shows recent completed trades and repayments. **Options** holds automatic trade repayment preferences, display preferences, optional backups, and the connection diagnostic. `/iou trades` also opens Activity.
 
 Click the minimap button or assign IOU a key in the game's keybinding settings. Drag the window header to move it. IOU remembers its position.
 
 ## What changes a balance
 
-In **0.7.0**, opening or completing a trade and sending or collecting mail do not change balances. Use a record's **More...** actions to enter a repayment, or **History → Undo** to correct one. Personal gold uses whole copper; item and favor payments use whole quantities. Notes and reasons are optional.
+In **0.8.0**, a confirmed completed trade with an exact player can repay a matching personal IOU automatically. Gold uses exact copper and items use whole quantities and their item identity. Partial repayments leave the remainder open; excess is not turned into a new debt. Opening, accepting, closing, or cancelling a trade alone never records repayment.
+
+An exchange in both directions, an item variant that needs checking, overlapping personal/Shared records, or multiple eligible IOUs needs review. **Trade activity** shows what was given and received and lets you choose an eligible personal IOU without retyping the amount. Shared repayments retain their existing confirmation flow. Unmatched trades are kept quietly as activity; purchases and gifts never become loans automatically. Automatic personal matching can be disabled in Options.
+
+Use **Undo** on the notice or Trade activity to reverse a trade's applied repayments. The original payment events remain in history. Manual **More...** actions remain available for exceptions and favors. Trade activity is separate from personal ledger exports; existing personal and Shared records and export formats are preserved.
 
 Shared gold agreements exchange exact terms with one chosen player. The recipient reviews and accepts an original agreement, payment, or correction. Closing the Shared board leaves an explicitly connected session running; **Disconnect**, logout, or reload stops it and pauses unfinished requests. Closing a window never accepts terms. Shared items and automatic Shared repayments are planned.
 
-The [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md) describes the intended automatic behavior. A successfully sent matching mail repayment will count in the sender's own personal ledger without waiting for collection or a peer acknowledgment. This is a future feature, not current behavior.
+Mail automation is next. A successfully sent matching mail repayment will count in the sender's own personal ledger without waiting for collection or a peer acknowledgment. Sending or collecting mail does not change balances in 0.8.0. See the [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md).
 
 ## Commands
 
@@ -43,6 +47,7 @@ The [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md) desc
 | `/iou` | Show or hide the ledger. |
 | `/iou add` | Open a new IOU. |
 | `/iou target` | Show the selected player's IOUs. |
+| `/iou trades` | Review recent completed trades and Undo automatic repayments. |
 | `/iou settings` | Open settings. |
 | `/iou shared [full player name]` | Open Shared without sending. |
 | `/iou shared off` | Disconnect and pause unfinished Shared requests. |
