@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.4.0"
+IOU.VERSION = "0.5.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -249,6 +249,7 @@ events:SetScript("OnEvent", function()
         if not sharedOK then IOU.Message("Shared agreements: " .. tostring(sharedError)) end
     end
     if IOU.UpdateLauncher then IOU.UpdateLauncher() end
+    if IOU.UpdateSharedOverview then IOU.UpdateSharedOverview() end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then
         local options = {now = time()}

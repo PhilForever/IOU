@@ -244,6 +244,29 @@ local function moneyFields(parent, x, y)
     return fields
 end
 
+local function sharedAttention()
+    return IOU.GetSharedAttention and IOU.GetSharedAttention() or {count=0}
+end
+
+function IOU.OpenSharedAttention()
+    local attention = sharedAttention()
+    if attention.recovery then IOU.ShowSharedBackup()
+    elseif attention.error then IOU.ShowShared()
+    elseif attention.count > 0 then IOU.ShowShared(nil, "inbox")
+    else IOU.ShowShared() end
+end
+
+function IOU.RenderSharedAttention(attention)
+    attention = attention or {count=0}
+    if UI.sharedButton then
+        local caption = "Shared"
+        if attention.recovery or attention.error then caption = "Shared (!)"
+        elseif attention.count > 0 then caption = "Shared (" .. attention.count .. ")" end
+        UI.sharedButton:SetText(caption)
+    end
+    if IOU.RenderLauncherAttention then IOU.RenderLauncherAttention(attention) end
+end
+
 local function buildMain()
     if UI.main then return end
     local f = window("IOULedgerWindow", 960, 720)
@@ -265,7 +288,7 @@ local function buildMain()
     end)
     font(f, 31, 22, -18, 180, "IOU", GOLD)
     UI.character = font(f, 12, 24, -55, 600, "", MUTED)
-    button(f, "Shared", 94, 486, -27, function() IOU.ShowShared() end)
+    UI.sharedButton = button(f, "Shared", 94, 486, -27, IOU.OpenSharedAttention)
     button(f, "Settings", 104, 590, -27, function() IOU.ShowSettings() end)
     button(f, "Backups", 98, 704, -27, function() IOU.ShowBackup("export") end)
     button(f, "+ New IOU", 114, 812, -27, function() IOU.ShowAdd() end)
@@ -357,6 +380,7 @@ end
 
 function IOU.Refresh(reset)
     if not UI.main then return end
+    IOU.RenderSharedAttention(sharedAttention())
     local db = IOU.GetLedger()
     if not db then return end
     if reset then UI.selected, UI.page = nil, 1 end

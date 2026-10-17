@@ -897,7 +897,7 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua",
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua","shared_view.lua",
         "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
@@ -2104,6 +2104,7 @@ test("two complete addon sessions agree through framed whispers only after recip
     equal(a.env.IOUDB.sharedByCharacter[a.api.Character()].store.offers[id].state,"COMMITTED")
     equal(b.env.IOUDB.sharedByCharacter[b.api.Character()].store.offers[id].state,"COMMITTED")
     assert(same(a.api.GetLedger(),personalA) and same(b.api.GetLedger(),personalB))
+    a.api.SelectSharedOffer(id)
     assert(a.api.UI.shared.details:GetText():find("their IOU acknowledged",1,true))
     a.api.UI.shared:Hide(); b.api.UI.shared:Hide()
     assert(not a.api.SharedService.IsEnabled() and not b.api.SharedService.IsEnabled())

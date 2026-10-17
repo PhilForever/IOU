@@ -20,10 +20,15 @@ local function due(stamp)
     return ok and type(value)=="string" and value or "Date unavailable"
 end
 local function termsOf(offer) return offer and C.ParseTerms(offer.terms) end
-local function parentOf(offer)
+local function parentOf(offer,overview)
     local terms = termsOf(offer)
     if not terms then return nil end
-    return terms.kind == "GOLD_OBLIGATION" and offer or S.GetOffer(terms.parentOfferId)
+    if terms.kind=="GOLD_OBLIGATION" then return offer end
+    if overview then
+        for _,parent in ipairs(overview.offers) do if parent.offerId==terms.parentOfferId then return parent end end
+        return nil
+    end
+    return S.GetOffer(terms.parentOfferId)
 end
 local function eligible(view)
     local result = {}
@@ -33,13 +38,14 @@ local function eligible(view)
     return result
 end
 
-function IOU.SharedPaymentDetails(offer)
+function IOU.SharedPaymentDetails(offer,overview)
     local terms = termsOf(offer)
     if not terms then return "" end
-    local parent = parentOf(offer)
+    local parent = parentOf(offer,overview)
     if not parent then return "\nOriginal agreement is unavailable." end
     local original = termsOf(parent)
-    local view, err = S.GetBalance(parent.offerId)
+    local view,err
+    if overview then view=overview.balances[parent.offerId] else view,err=S.GetBalance(parent.offerId) end
     local text = {"", "Shared gold balance"}
     if view then
         if view.confirmed then
@@ -136,18 +142,30 @@ local function refreshForm(f)
     f.send:SetEnabled(not correction or f.paymentId~=nil)
 end
 
-function IOU.RefreshSharedPayments(selected)
+function IOU.RefreshSharedPayments(selected,overview)
     local board=UI.shared
     if not board then return end
-    local parent=selected and parentOf(selected)
-    local view=parent and S.GetBalance(parent.offerId)
+    local parent,view
+    if overview and selected then
+        local terms=termsOf(selected)
+        local parentId=terms and (terms.kind=="GOLD_OBLIGATION" and selected.offerId or terms.parentOfferId)
+        for _,offer in ipairs(overview.offers) do if offer.offerId==parentId then parent=offer; break end end
+        view=parent and overview.balances[parent.offerId]
+    elseif not overview then
+        parent=selected and parentOf(selected)
+        view=parent and S.GetBalance(parent.offerId)
+    end
     local ready=view and view.canPropose and S.IsEnabled()
         and S.GetPeer()==termsOf(parent).recipient
     board.payment:SetEnabled(ready and view.remainingCopper>0 or false)
     board.settle:SetEnabled(ready and view.remainingCopper>0 or false)
     board.correction:SetEnabled(ready and #eligible(view)>0 or false)
+    board.payment:SetShown(ready and view.remainingCopper>0 or false)
+    board.settle:SetShown(ready and view.remainingCopper>0 or false)
+    board.correction:SetShown(ready and #eligible(view)>0 or false)
     local f=UI.sharedPaymentForm
-    if f and f:IsShown() then refreshForm(f) end
+    if f and f:IsShown() and (not overview or board.paymentOverview ~= overview) then refreshForm(f) end
+    board.paymentOverview=overview
 end
 
 function IOU.ShowSharedPayment(id,mode)
@@ -203,7 +221,7 @@ function IOU.ShowSharedPayment(id,mode)
                 offer,problem,saved=S.ProposePayment(f.parentId,amount,f.note:GetText())
             end
             if not offer and not saved then f.status:SetText(H.literal(problem)); return end
-            if UI.shared then UI.shared.selected=(offer or saved).offerId; UI.shared.page=1; UI.shared.problem=not offer and problem or nil end
+            IOU.SelectSharedOffer((offer or saved).offerId,not offer and problem or nil)
             f:Hide(); IOU.RefreshShared()
         end)
         H.button(f,"Back",148,524,-690,function() f:Hide() end)

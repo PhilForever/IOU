@@ -4,9 +4,11 @@ A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gol
 
 Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
 
-**0.4.0 adds Shared backups and reviewed recovery.** Open **Shared → Shared backups** to export agreements, payments, corrections, and acceptance history. Preview a backup before staging recovery; restore adds missing history while keeping existing records. Sharing stays off until you review the recovery and explicitly reconnect. The [backup guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-backups.md) explains comparisons and conflicts.
+**0.5.0 makes Shared easier to use.** Find incoming and interrupted offers under **Needs review**, active agreements under **Agreements**, and delivery in progress under **Waiting**. Search names and notes, see remaining balances on agreement rows, and use the Shared button or minimap review count to find work needing attention. **Enable for selected player** fills the exact player from a retained offer and enables sharing only when you click it.
 
-Shared gold agreements support proposals, explicit acceptance, partial payments, settlement, and full reversals of individual payments. The original proposer records financial events and the other player acknowledges them. On 0.3.2, two live clients completed all four connection probes and the user demonstrated acknowledged payment, correction, and settlement. The new recovery flow still needs an in-game check.
+**Shared → Shared backups** exports agreements, payments, corrections, and acceptance history. Preview before staging recovery; restore adds missing history while keeping current records. Sharing stays off until you review the recovery and explicitly reconnect. See the [backup guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-backups.md).
+
+Shared gold agreements support proposals, explicit acceptance, partial payments, settlement, and full reversals of individual payments. The original proposer records financial events and the other player acknowledges them. On 0.3.2, two live clients completed all four connection probes and the user demonstrated acknowledged payment, correction, and settlement. The recovery flow and new board still need in-game checks.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
@@ -44,6 +46,7 @@ Use **Edit details** to change the player, item/favor label, note, and due date 
 - Search player names, labels, and notes, filter by gold/items/favors, and sort by newest, oldest, player, or due date.
 - Due dates make overdue agreements visible. Optional login reminders summarize overdue agreements for the current character.
 - The minimap button opens the ledger. You can also assign a key in the game's keybinding settings.
+- Shared review counts include incoming offers and your own interrupted offers needing review. Shift-left-click the minimap button to open Shared review; ordinary left/right clicks retain their ledger/new-IOU actions. Notices never open a window or accept an offer automatically.
 - Move the ledger by dragging its header; IOU remembers its position.
 
 Gold summaries cover gold agreements only. Item and favor quantities retain their own units.

@@ -271,6 +271,17 @@ function V.List()
     end)
     return offers
 end
+function V.GetOverview()
+    local value, err, views=current()
+    if not value then return nil,err end
+    local offers={}
+    for id in pairs(value.store.offers) do offers[#offers+1]=offerSnapshot(value,id) end
+    table.sort(offers,function(a,b)
+        if a.createdAt ~= b.createdAt then return a.createdAt > b.createdAt end
+        return a.offerId < b.offerId
+    end)
+    return {offers=offers,balances=clone(views),localName=localName,peer=V.GetPeer()}
+end
 function V.GetStatus()
     if failure then return failure end
     if entry then

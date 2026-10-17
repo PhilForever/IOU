@@ -26,6 +26,15 @@ local function drag(button)
     position(button)
 end
 
+function IOU.RenderLauncherAttention(attention)
+    if not IOU.launcher or not IOU.launcher.sharedBadge then return end
+    attention = attention or {count=0}
+    local marker = attention.recovery or attention.error
+    local badge = IOU.launcher.sharedBadge
+    badge:SetText(marker and "!" or tostring(attention.count))
+    badge:SetShown(marker or attention.count > 0)
+end
+
 function IOU.UpdateLauncher()
     local settings = IOU.GetSettings()
     if not settings or not Minimap then return end
@@ -47,8 +56,14 @@ function IOU.UpdateLauncher()
         local border = b:CreateTexture(nil, "OVERLAY")
         border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
         border:SetSize(54, 54); border:SetPoint("TOPLEFT")
+        b.sharedBadge = b:CreateFontString(nil, "OVERLAY")
+        b.sharedBadge:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+        b.sharedBadge:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+        b.sharedBadge:SetTextColor(1, 0.82, 0)
         b:SetScript("OnClick", function(_, mouse)
-            if mouse == "RightButton" then IOU.ShowAdd() else IOU_ToggleLedger() end
+            if mouse == "RightButton" then IOU.ShowAdd()
+            elseif type(IsShiftKeyDown) == "function" and IsShiftKeyDown() then IOU.OpenSharedAttention()
+            else IOU_ToggleLedger() end
         end)
         b:SetScript("OnDragStart", function(self)
             self:SetScript("OnUpdate", drag); drag(self)
@@ -62,12 +77,18 @@ function IOU.UpdateLauncher()
             local owe = IOU.Ledger.Summary(IOU.GetLedger(), "owe")
             GameTooltip:AddLine("Owed to you: " .. IOU.Ledger.FormatMoney(owed.money), 1, 1, 1)
             GameTooltip:AddLine("You owe: " .. IOU.Ledger.FormatMoney(owe.money), 1, 1, 1)
+            local attention = IOU.GetSharedAttention and IOU.GetSharedAttention() or {count=0}
+            GameTooltip:AddLine("Shared: " .. attention.count .. " need review", 1, 0.82, 0)
+            if attention.recovery then GameTooltip:AddLine("Shared recovery needs review.", 1, 0.82, 0)
+            elseif attention.error then GameTooltip:AddLine("Open Shared to review a storage issue.", 1, 0.82, 0) end
             GameTooltip:AddLine("Left-click: ledger / Right-click: new IOU", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("Shift-left-click: Shared review", 0.7, 0.7, 0.7)
             GameTooltip:AddLine("Drag to move / /iou settings", 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     end
+    IOU.RenderLauncherAttention(IOU.GetSharedAttention and IOU.GetSharedAttention() or {count=0})
     IOU.launcher:SetScript("OnUpdate", nil)
     position(IOU.launcher)
     IOU.launcher:SetShown(settings.minimap)

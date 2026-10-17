@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — 2026-10-17
+
+- Split the Shared board into Needs review, Agreements, Waiting, History, and All offers, with global counts, literal name/note search, stable selection, and pagination.
+- Show the remaining acknowledged balance on original agreement rows while preserving the amount and type of each payment or correction. Completed events move to History; an original stays active while a financial event is unfinished.
+- Added passive review counts on the main Shared button and minimap. Shift-left-click opens Shared review; incoming traffic never opens a dialog or steals the current view, focus, or detail scroll.
+- Added explicit enabling for a selected offer's exact player while disconnected, with stale-state checks and recovery gates. Connection copy describes local readiness without claiming the other client is online or enabled.
+- Show relevant actions and next-step guidance for the selected offer. Newly sent events are explicitly revealed in their appropriate view without creating duplicate records.
+- Added a detached service overview and pure presentation model. Search, filtering, passive notices, and board details use that snapshot; confirmations continue to validate live state.
+
+Validation: Lua 5.1 regression, presentation, and complete-addon workflow checks, plus existing two-client/payment/recovery simulations, publisher checks, and package validation. Live evidence remains the 0.3.2 diagnostic and acknowledged payment/correction/settlement pilot. The 0.4.0 recovery test and new 0.5.0 workflow remain pending. Existing schemas, consent rules, Shared wire formats, and personal backups are unchanged. **Fully restart after this update because it adds an addon file.** Published through the regular Release channel.
+
 ## 0.4.0 — 2026-10-16
 
 - Added separate `IOUS1:` Shared backups containing full agreements, payment/correction history, exact retained consent and messages, and closed-offer review markers. Personal `IOU1`/`IOU2` formats and existing records are unchanged.

@@ -1,6 +1,6 @@
 # Shared Agreements development
 
-Version **0.4.0** adds `IOU.SharedBackup` and staged recovery to `IOU.SharedService`, alongside the existing codec, state engine, payment domain, wire, and consent UI. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
+Version **0.5.0** adds `IOU.SharedView` and an event-driven Shared board to the existing codec, state engine, payment domain, backup/recovery, wire, and consent UI. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
 
 The personal ledger remains separate. See the [player guide](shared-agreements.md) and [protocol specification](shared-agreements-protocol.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement; 0.4.0 recovery remains pending an in-game check.
 
@@ -100,7 +100,7 @@ python tools/test_iou.py
 
 `tools/test_shared.lua` covers the codec and two independent stores, dropped and duplicated messages, reordered terminal outcomes, spoofed roles and senders, changed terms, bounded records, and loss of local consent. It also verifies that the foundation cannot invoke network or game APIs and that input stores remain unchanged on rejection.
 
-Next work includes simplifying connection/incoming-offer interactions, followed by broader agreement kinds and richer peer reconciliation. Keep live evidence separate from simulations; the completed 0.3.2 pilot does not verify 0.4.0 recovery or all client/persistence conditions.
+Next work includes broader agreement kinds and richer peer reconciliation. Keep live evidence separate from simulations; the completed 0.3.2 pilot does not verify 0.4.0 recovery, the 0.5.0 board, or all client/persistence conditions.
 
 ## Shared payment domain
 
@@ -136,3 +136,11 @@ All current offer IDs win over differing imported versions. Missing offers and e
 `SharedPayments.Views(store,closedPaused)` validates one whole source and returns all derived original-agreement balances. Recovery compares three sources without repeatedly decoding the entire store for every displayed row. Complexity/byte limits bound the backup parser; expensive snapshot parsing is confined to explicit export/review/recovery actions.
 
 The service reuses derived views only within an operation and caches at most two successfully validated immutable text snapshots, with an 8 MiB combined text-key budget. Cached trees/views stay private and are cloned before adoption or public preview. Current SavedVariables always revalidate; future-date and stale-baseline checks run fresh. No live mutable entry is cached.
+
+## Board presentation and notices
+
+`SharedService.GetOverview()` validates once and returns detached `{offers,balances,localName,peer}`. `balances` reuses the financial views already derived during that validation. `SharedView.Build(overview,filter,search)` is pure and returns rows, global counts, query-matching counts, total, filteredTotal, filter, search, and unfiltered needsReview. Filter keys are `inbox`, `agreements`, `waiting`, `history`, `all`; `DefaultFilter` prefers the first nonempty category in that order. Rows retain exact offers and parsed terms from the detached overview, plus peer, kind, label, direction, event amount, and confirmed original remaining amount.
+
+`IOU.UpdateSharedOverview` runs on login, explicit board opening, and `OnSharedChanged`. It updates passive attention and an existing board without constructing/showing windows. `GetSharedAttention()` returns detached scalar state without reading storage. Search/filter render from the board snapshot, including parent/payment details and action availability; confirmation methods still fetch and validate live records. A visible decision review rechecks when its source/session changes, and again on confirmation. No polling or automatic transport is added.
+
+`IOU.ShowShared(peer,view)` optionally opens a specific view without enabling communication. `SelectSharedOffer(id,problem)` is an explicit UI action used after sending, clears search before binding selection, chooses the offer's category, and reveals its page. Ordinary incoming changes preserve a chosen filter, query, selection, focus, and scroll. An offer that leaves the current category can disappear from that view; its destination count remains visible. Selected-peer enabling binds exact ID, terms, state, and peer, and refuses paused/local-closed offers, active-peer replacement, or pending recovery.
