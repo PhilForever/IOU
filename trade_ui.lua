@@ -75,6 +75,14 @@ local function sameAsset(a,b)
     return a and b and a.direction==b.direction and a.asset==b.asset and a.amount==b.amount
         and a.label==b.label and a.itemID==b.itemID and a.itemKey==b.itemKey
 end
+local function captureSnapshot(rows)
+    local result={}
+    for index,row in ipairs(rows or {}) do
+        result[index]={direction=row.direction,asset=row.asset,amount=row.amount,
+            label=row.label,itemID=row.itemID,itemKey=row.itemKey}
+    end
+    return result
+end
 local function dateLabel(at)
     if type(at)~="number" then return "" end
     local ok,value=pcall(date,"%d %b, %H:%M",at)
@@ -209,6 +217,10 @@ local function createActivity()
     f.ignore=H.button(f,"Dismiss",100,548,-480,function()
         local value,err=call("Ignore",f.selected);f.choice=nil;showResult(f,value,err)
     end)
+    f.captureAll=H.button(f,"Track all",100,656,-480,function()
+        local value,err=call("CaptureAll",f.selected,f.captureAllExpected)
+        f.captureChoice=nil;showResult(f,value,err)
+    end)
     f.message=H.font(f,11,286,-522,470,"")
     return f
 end
@@ -316,6 +328,8 @@ refresh=function(f)
     f.choicePages:SetText(f.choicePage.." / "..choicePages)
     f.apply:SetShown(not capturing and #rows>0);f.apply:SetEnabled(currentChoice~=nil)
     f.capture:SetShown(capturing);f.capture:SetEnabled(currentCapture~=nil)
+    local bundle=capturing and #captureRows>1 and s and type(s.CaptureAll)=="function"
+    f.captureAll:SetShown(bundle);f.captureAllExpected=bundle and captureSnapshot(selected.unmatched) or nil
     f.shared:SetShown(not capturing and #rows==0 and shared)
     f.records:SetShown(not capturing and #rows==0 and not shared and (pending==true or selected and #(selected.captures or {})>0))
     f.undo:SetShown(selected and #(selected.applications or {})>0 and selected.status~="undone" or false)

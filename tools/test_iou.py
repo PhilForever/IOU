@@ -50,7 +50,10 @@ def main() -> int:
                   "test_compact_ui.lua", "test_compact_shared_ui.lua", "test_trade_matching.lua",
                   "test_trade_service.lua", "test_trade_observer.lua", "test_trade_ui.lua",
                   "test_mail_activity.lua", "test_mail_sent.lua", "test_mail_received.lua",
-                  "test_mail_integration.lua", "test_capture_edges.lua")]
+                  "test_mail_integration.lua", "test_capture_edges.lua", "test_shared_items.lua",
+                  "test_linked_matching.lua", "test_crafting.lua", "test_requests_100.lua",
+                  "test_sharing_100.lua", "test_shared_background.lua", "test_sync_hint.lua",
+                  "test_shared_inbox.lua", "test_bundle_activity.lua", "test_100_review.lua", "test_item_context.lua")]
     for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
@@ -80,7 +83,9 @@ def main() -> int:
                              "Shared payments", "Shared payment integration", "Shared backup codec", "Shared recovery",
                              "Shared backup UI", "Shared view", "Shared workflow", "Player summary", "Player context",
                              "Compact UI", "Compact Shared UI", "Trade matching", "Trade service", "Trade observer", "Trade UI",
-                             "Mail activity", "Mail sent", "Mail received", "Mail integration", "Capture edges"), counts,
+                             "Mail activity", "Mail sent", "Mail received", "Mail integration", "Capture edges",
+                             "Shared items", "Linked matching", "Crafting", "Requests 1.0", "Sharing 1.0", "Shared background",
+                             "Sync hints", "Shared inbox", "Activity bundles", "Mixed repayment histories", "Item link context"), counts,
                             strict=True):
         print(f"{label} checks: {count} passed.")
     print(f"Checks: {sum(counts)} passed.")

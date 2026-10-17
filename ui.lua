@@ -383,6 +383,20 @@ local function buildMain()
         UI.historyExpanded = not UI.historyExpanded; IOU.Refresh(); UI.detailScroll:SetVerticalScroll(0)
     end)
     UI.more = button(d, "More...", 100, 411, -325, function() IOU.ShowMore() end)
+    UI.share = button(d, "Share IOU", 124, 278, -325, function()
+        local entry = L.Get(IOU.GetLedger(), UI.selected)
+        if not entry or not IOU.Sharing then return end
+        local link = type(IOU.Sharing.GetLink) == "function" and IOU.Sharing.GetLink(entry.id)
+        if link and type(IOU.ShowShared) == "function" then
+            IOU.ShowShared(entry.player)
+            IOU.SelectSharedOffer(link.offerId)
+            return
+        end
+        if type(IOU.Sharing.Share) ~= "function" then return end
+        local offer, err = IOU.Sharing.Share(entry.id)
+        if not offer then IOU.Message(err or "Could not share this IOU.") end
+        IOU.Refresh()
+    end)
     local menu = panel(d, 196, 170, 320, -151)
     UI.moreMenu = menu
     menu:SetFrameLevel(d:GetFrameLevel() + 12)
@@ -480,6 +494,13 @@ function IOU.Refresh(reset)
     UI.cancel:SetEnabled(selected ~= nil and (cancelled or L.Balance(selected) > 0))
     UI.cancel:SetText(cancelled and "Reopen" or "Cancel IOU")
     UI.more:SetEnabled(selected ~= nil)
+    local shareable = selected and (selected.kind == "money" or selected.kind == "item")
+        and not cancelled and L.Balance(selected) > 0
+    local sharing = IOU.Sharing
+    local sharedLink = selected and sharing and type(sharing.GetLink) == "function" and sharing.GetLink(selected.id)
+    UI.share:SetShown(sharing ~= nil and type(sharing.Share) == "function" and (shareable or sharedLink))
+    UI.share:SetEnabled(shareable or sharedLink ~= nil and sharedLink ~= false)
+    UI.share:SetText(sharedLink and (sharedLink.state == "agreed" and "Shared" or "View request") or "Share IOU")
     UI.historyToggle:SetEnabled(selected ~= nil)
     if not selected then
         UI.peer:SetText("Your IOUs")
@@ -695,6 +716,10 @@ local function installLinkCapture()
         if target and not (issecretvalue and issecretvalue(link)) and type(link) == "string" and #link <= 512
             and link:find("|Hitem:", 1, true) then
             target:SetText(link); target:HighlightText(); target:SetFocus()
+            if target == (UI.add and UI.add.label) then
+                UI.add.stacks = false
+                if UI.add.unitMode then UI.add.unitMode:SetText("Use stacks") end
+            end
             return true
         end
     end
@@ -718,7 +743,27 @@ local function installLinkCapture()
 end
 
 local function layoutAdd(f)
-    local y = f.kind == "money" and 285 or 337
+    local crafting = IOU.Crafting ~= nil
+    local hasBundle = f.kind == "item" and f.bundle and #f.bundle > 0
+    local y = f.kind == "money" and 285 or f.kind == "item" and crafting and (hasBundle and 447 or 379) or 337
+    if f.unitMode then f.unitMode:SetShown(f.kind == "item" and crafting) end
+    if f.fromBags then f.fromBags:SetShown(f.kind == "item" and crafting) end
+    if f.addMaterial then f.addMaterial:SetShown(f.kind == "item" and crafting) end
+    if f.clearMaterial then f.clearMaterial:SetShown(hasBundle) end
+    if f.bundleText then
+        local lines = {}
+        for index = math.max(1, #(f.bundle or {}) - 2), #(f.bundle or {}) do
+            local row = f.bundle[index]
+            lines[#lines + 1] = row.amount .. " x " .. labelText({kind="item",label=row.label})
+        end
+        if #(f.bundle or {}) > 3 then table.insert(lines, 1, (#f.bundle - 3) .. " more materials") end
+        f.bundleText:SetText(table.concat(lines, "\n")); f.bundleText:SetShown(hasBundle)
+    end
+    if f.shareToggle then
+        f.shareToggle:ClearAllPoints(); f.shareToggle:SetPoint("TOPLEFT", 250, -y)
+        f.shareToggle:SetShown(f.kind ~= "favor" and IOU.Sharing ~= nil and type(IOU.Sharing.Share) == "function")
+        f.shareToggle:SetText(f.shareWanted and "Share with player: on" or "Share with player: off")
+    end
     f.moreOptions:ClearAllPoints(); f.moreOptions:SetPoint("TOPLEFT", 24, -y)
     f.moreOptions:SetText(f.optionsExpanded and "Fewer options" or "More options")
     f.optionsGroup:ClearAllPoints(); f.optionsGroup:SetPoint("TOPLEFT", 0, -y - 43)
@@ -729,6 +774,53 @@ local function layoutAdd(f)
     f.dismiss:ClearAllPoints(); f.dismiss:SetPoint("TOPLEFT", 221, -bottom - 35)
     local height = bottom + 78
     f:SetHeight(height); fit(f, 506, height)
+end
+
+function IOU.ShowBagPicker()
+    if not UI.add or not IOU.Crafting then return end
+    if not UI.bagPicker then
+        local f = window("IOUBagPicker", 470, 435)
+        UI.bagPicker = f
+        font(f, 21, 22, -22, 400, "Choose an item", GOLD)
+        f.search = edit(f, 408, 29, -66, 120)
+        f.rows = {}
+        local function render()
+            local query = f.search:GetText():lower()
+            local items = {}
+            for _, item in ipairs(f.items or {}) do
+                if item.name:lower():find(query, 1, true) then items[#items + 1] = item end
+            end
+            local pages = math.max(1, math.ceil(#items / 6))
+            f.page = math.max(1, math.min(f.page or 1, pages))
+            for index, row in ipairs(f.rows) do
+                local item = items[(f.page - 1) * 6 + index]
+                row.item = item
+                if item then row:SetText(literal(item.name) .. "  /  " .. item.quantity .. " in bags"); row:Show()
+                else row:Hide() end
+            end
+            f.previous:SetEnabled(f.page > 1); f.next:SetEnabled(f.page < pages)
+            f.pages:SetText(f.page .. " / " .. pages)
+            f.empty:SetText(#items == 0 and (f.readError or "No matching items in your bags.") or "")
+        end
+        f.render = render
+        for index = 1, 6 do
+            f.rows[index] = button(f, "", 420, 24, -108 - (index - 1) * 43, function(self)
+                local form, item = UI.add, self.item
+                if not form or not form:IsShown() or form.kind ~= "item" or not item then f:Hide(); return end
+                form.label:SetText(item.link); form.quantity:SetText(tostring(item.quantity))
+                form.stacks = false; form.unitMode:SetText("Use stacks"); form.error:SetText("")
+                f:Hide(); form.quantity:SetFocus(); form.quantity:HighlightText()
+            end)
+        end
+        f.empty = font(f, 12, 25, -118, 412, "", MUTED)
+        f.previous = button(f, "<", 34, 24, -388, function() f.page = f.page - 1; render() end)
+        f.next = button(f, ">", 34, 410, -388, function() f.page = f.page + 1; render() end)
+        f.pages = font(f, 11, 202, -397, 90, "", MUTED)
+        f.search:SetScript("OnTextChanged", function() f.page = 1; render() end)
+    end
+    local f = UI.bagPicker
+    f.items, f.readError = IOU.Crafting.BagItems(); f.page = 1
+    f.search:SetText(""); f.render(); f:Show(); f.search:SetFocus()
 end
 
 function IOU.ShowAdd(player)
@@ -764,12 +856,52 @@ function IOU.ShowAdd(player)
         f.unitGroup:SetAllPoints(f)
         font(f.unitGroup, 11, 25, -210, 440, "Quantity", MUTED)
         f.quantity = edit(f.unitGroup, 100, 29, -230, 9, true)
+        f.unitMode = button(f.unitGroup, "Use stacks", 140, 142, -230, function()
+            if not IOU.Crafting then return end
+            local count = integer(f.quantity, true)
+            if not count or count < 1 then f.error:SetText("Enter a positive whole quantity."); return end
+            local size, err = IOU.Crafting.StackSize(f.label:GetText())
+            if not size then f.error:SetText(literal(err)); return end
+            if f.stacks then
+                local units
+                units, err = IOU.Crafting.Quantity(f.label:GetText(), count, true)
+                if not units then f.error:SetText(literal(err)); return end
+                f.quantity:SetText(tostring(units)); f.stacks = false
+            else
+                if count == 1 then f.quantity:SetText("1")
+                elseif count % size == 0 then f.quantity:SetText(tostring(count / size))
+                else f.error:SetText("A full stack is " .. size .. " items. Keep units for a partial stack."); return end
+                f.stacks = true
+            end
+            f.unitMode:SetText(f.stacks and ("Stacks (" .. size .. ")") or "Use stacks")
+            f.error:SetText("")
+        end)
+        f.fromBags = button(f.unitGroup, "Choose from bags", 150, 326, -230, function() IOU.ShowBagPicker() end)
         f.labelCaption = font(f.unitGroup, 11, 25, -272, 445, "Item name or shift-click an item here", MUTED)
         f.label = edit(f.unitGroup, 445, 29, -292, 512)
+        f.label:SetScript("OnTextChanged", function()
+            if f.stacks then f.stacks = false; f.unitMode:SetText("Use stacks") end
+        end)
+        f.addMaterial = button(f.unitGroup, "+ Add another item", 172, 24, -330, function()
+            if not IOU.Crafting then return end
+            local value, err = IOU.Crafting.Quantity(f.label:GetText(), integer(f.quantity, true), f.stacks)
+            if not value then f.error:SetText(literal(err)); return end
+            local staged
+            staged, err = IOU.Crafting.Stage(f.bundle, f.label:GetText(), value)
+            if not staged then f.error:SetText(literal(err)); return end
+            f.bundle = staged; f.label:SetText(""); f.quantity:SetText("1"); f.stacks = false
+            f.unitMode:SetText("Use stacks"); f.error:SetText(""); layoutAdd(f); f.label:SetFocus()
+        end)
+        f.clearMaterial = button(f.unitGroup, "Remove last", 116, 360, -330, function()
+            table.remove(f.bundle); layoutAdd(f)
+        end)
+        f.bundleText = font(f.unitGroup, 11, 25, -368, 445, "", MUTED)
+        f.bundleText:SetHeight(64); f.bundleText:SetMaxLines(4)
         for index, choice in ipairs({{"money", "Gold"}, {"item", "Items"}, {"favor", "Favor"}}) do
             local key = choice[1]
             f.kindButtons[key] = button(f, choice[2], 140, 23 + (index - 1) * 151, -165, function()
                 f.kind = key
+                f.stacks = false; f.unitMode:SetText("Use stacks")
                 for value, b in pairs(f.kindButtons) do b:SetEnabled(value ~= key) end
                 f.moneyGroup:SetShown(key == "money")
                 f.unitGroup:SetShown(key ~= "money")
@@ -783,6 +915,9 @@ function IOU.ShowAdd(player)
             if not f.optionsExpanded then f.due:ClearFocus(); f.note:ClearFocus() end
             layoutAdd(f)
         end)
+        f.shareToggle = button(f, "Share with player: off", 226, 250, -285, function()
+            f.shareWanted = not f.shareWanted; layoutAdd(f)
+        end)
         f.optionsGroup = CreateFrame("Frame", nil, f)
         f.optionsGroup:SetSize(506, 165)
         font(f.optionsGroup, 11, 25, 0, 440, "Due date (optional, YYYY-MM-DD)", MUTED)
@@ -793,28 +928,56 @@ function IOU.ShowAdd(player)
         f.error:SetHeight(30)
         f.create = button(f, "Create IOU", 145, 332, -540, function()
             local value, err
-            if f.kind == "money" then value, err = f.money:Read() else value = integer(f.quantity, true) end
+            if f.kind == "money" then value, err = f.money:Read()
+            elseif f.kind == "item" and IOU.Crafting then
+                if f.label:GetText():find("%S") or #(f.bundle or {}) == 0 then
+                    value, err = IOU.Crafting.Quantity(f.label:GetText(), integer(f.quantity, true), f.stacks)
+                else value = 1 end
+            else value = integer(f.quantity, true) end
             if not value then f.error:SetText(err or "Enter a positive whole quantity."); return end
             local due
             due, err = IOU.ParseDueDate(f.due:GetText())
             if due == nil then f.optionsExpanded = true; layoutAdd(f); f.error:SetText(err); f.due:SetFocus(); return end
-            local e
-            e, err = IOU.Add({player = f.player:GetText(), direction = f.direction, kind = f.kind, amount = value,
-                label = f.kind == "money" and "" or f.label:GetText(), note = f.note:GetText(), due = due})
+            local e, created
+            if f.kind == "item" and IOU.Crafting and #(f.bundle or {}) > 0 then
+                local items = f.bundle
+                if f.label:GetText():find("%S") then
+                    items, err = IOU.Crafting.Stage(items, f.label:GetText(), value)
+                    if not items then f.error:SetText(literal(err)); return end
+                end
+                if type(IOU.AddBundle) ~= "function" then f.error:SetText("Material bundles are unavailable."); return end
+                created, err = IOU.AddBundle({player=f.player:GetText(), direction=f.direction, items=items,
+                    note=f.note:GetText(), due=due})
+                e = created and created[1]
+            else
+                e, err = IOU.Add({player = f.player:GetText(), direction = f.direction, kind = f.kind, amount = value,
+                    label = f.kind == "money" and "" or f.label:GetText(), note = f.note:GetText(), due = due})
+                created = e and {e}
+            end
             if not e then f.error:SetText(literal(err)); return end
+            if f.shareWanted and f.kind ~= "favor" and IOU.Sharing and type(IOU.Sharing.Share) == "function" then
+                for _, item in ipairs(created) do
+                    local offer, shareError = IOU.Sharing.Share(item.id)
+                    if not offer then IOU.Message("IOU saved. " .. (shareError or "Could not share this IOU.")); break end
+                end
+            end
             UI.search:SetText("")
             focusEntry(e); f:Hide()
         end)
         f.dismiss = button(f, "Cancel", 100, 221, -540, function() f:Hide() end)
         f:SetScript("OnShow", layoutAdd)
+        f:HookScript("OnHide", function() if UI.bagPicker then UI.bagPicker:Hide() end end)
     end
     installLinkCapture()
     local f = UI.add
+    if UI.bagPicker then UI.bagPicker:Hide() end
     if player == nil then player = IOU.PlayerContext.UnitName("target") end
     local valid = IOU.PlayerSummary.NameKey(player)
     if not valid or #player > L.MAX_PLAYER then player = "" end
     f.player:SetText(player); f.note:SetText(""); f.quantity:SetText("1"); f.label:SetText(""); f.due:SetText(""); f.money:Fill(0)
     f.error:SetText(""); f.direction, f.kind, f.optionsExpanded = "owed", "money", false
+    f.bundle, f.stacks, f.shareWanted = {}, false, false
+    f.unitMode:SetText("Use stacks")
     for key, b in pairs(f.dirButtons) do b:SetEnabled(key ~= f.direction) end
     for key, b in pairs(f.kindButtons) do b:SetEnabled(key ~= f.kind) end
     f.moneyGroup:Show(); f.unitGroup:Hide(); layoutAdd(f)
@@ -1085,6 +1248,11 @@ function IOU.ShowSettings()
             IOU.GetSettings().autoMailRepayments = not IOU.GetSettings().autoMailRepayments
             IOU.ShowSettings()
         end)
+        if IOU.Sharing then f.requests=button(f,"",150,300,-307,function()
+            local ok,err=IOU.Sharing.SetEnabled(not IOU.GetSettings().sharedRequests)
+            if not ok then IOU.Message(err) end
+            IOU.ShowSettings()
+        end) end
         button(f, "Reset window position", 260, 24, -349, function() IOU.ResetPosition() end)
         button(f, "Shared agreements", 200, 24, -391, function()
             f:Hide(); IOU.OpenSharedAttention()
@@ -1105,6 +1273,7 @@ function IOU.ShowSettings()
     f.trade:SetText("Trade reminders: " .. (IOU.GetSettings().tradeReminders and "on" or "off"))
     f.automatic:SetText("Trade repayments: " .. (IOU.GetSettings().autoTradeRepayments and "automatic" or "manual"))
     f.mailAutomatic:SetText("Mail repayments: " .. (IOU.GetSettings().autoMailRepayments and "automatic" or "manual"))
+    if f.requests then f.requests:SetText("Requests: "..(IOU.GetSettings().sharedRequests and "on" or "off")) end
     f:Show()
 end
 

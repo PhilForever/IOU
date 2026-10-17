@@ -903,6 +903,8 @@ local function coreSession(config)
         setfenv(chunk, env); chunk("IOU",api)
     end
     if config.ui then
+        local crafting=assert(loadstring(assert(IOU_SOURCES["crafting.lua"]),"@IOU/crafting.lua"))
+        setfenv(crafting,env);crafting("IOU",api)
         local chunk=assert(loadstring(assert(IOU_SOURCES["ui.lua"]),"@IOU/ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_ui.lua"]),"@IOU/shared_ui.lua"))
@@ -927,6 +929,10 @@ local function coreSession(config)
             local chunk=assert(loadstring(assert(IOU_SOURCES[name]),"@IOU/"..name))
             setfenv(chunk,env); chunk("IOU",api)
         end
+    end
+    if config.sharing then
+        local chunk=assert(loadstring(assert(IOU_SOURCES["sharing.lua"]),"@IOU/sharing.lua"))
+        setfenv(chunk,env);chunk("IOU",api)
     end
     if config.launcher then
         local chunk=assert(loadstring(assert(IOU_SOURCES["launcher.lua"]),"@IOU/launcher.lua"))

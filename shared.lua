@@ -1,5 +1,5 @@
 local _, IOU = ...
-local S = {VERSION = 1, MAX_OFFERS = 32}
+local S = {VERSION = 1, MAX_OFFERS = 128}
 IOU.Shared = S
 
 -- Offline protocol foundation. Every mutation returns a new validated store
@@ -15,7 +15,7 @@ local messageKinds = {propose="PROPOSE", accept="ACCEPT", commit="COMMIT", ack="
     decline="DECLINE", withdraw="WITHDRAW", outcome="OUTCOME"}
 local historyKinds = {OFFER_SENT=true, OFFER_RECEIVED=true, ACCEPTED_LOCALLY=true,
     DECLINED_LOCALLY=true, COMMITTED=true, PEER_RECEIPT=true, DECLINED=true,
-    WITHDRAWN=true, PAUSED=true}
+    WITHDRAWN=true, PAUSED=true, RESUMED=true}
 
 local function integer(value)
     return type(value) == "number" and value == math.floor(value)
@@ -528,6 +528,26 @@ function S.Pause(store, now)
         end
     end
     return finish(result)
+end
+
+-- Resume only the exact pending state already backed by retained local consent.
+-- No terms, semantic identifiers, or acceptance decisions are manufactured.
+-- Recovery/tombstone gates belong to the service and must be checked first.
+function S.Resume(store, offerId, now)
+    local result,err=begin(store,now)
+    if not result then return nil,err end
+    local offer,problem=getOffer(result,offerId)
+    if not offer then return nil,problem end
+    if offer.state~="PAUSED" then return nil,"Only a paused shared offer can resume." end
+    local ok,timeError=checkTime(offer,now)
+    if not ok then return nil,timeError end
+    if #offer.history>=MAX_HISTORY then return nil,"Shared history capacity reached; the offer remains paused." end
+    offer.state,offer.pausedFrom=offer.pausedFrom,nil
+    offer.delivery=offer.state=="OFFER_RECEIVED" and "NONE" or "QUEUED"
+    event(offer,"RESUMED",now)
+    local valid,validationError=S.Validate(result)
+    if not valid then return nil,validationError end
+    return replay(result,offer)
 end
 
 function S.Retry(store, offerId, now)

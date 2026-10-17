@@ -19,6 +19,7 @@ RUNTIME_FILES = frozenset({
     "shared_backup.lua", "shared_backup_ui.lua", "shared_view.lua", "player_summary.lua", "player_context.lua",
     "trade_matching.lua", "trade_service.lua", "trade_observer.lua", "trade_ui.lua",
     "mail_sent.lua", "mail_received.lua",
+    "crafting.lua", "sharing.lua",
 })
 DOCUMENT_FILES = frozenset({"README.md", "CHANGELOG.md", "LICENSE"})
 PACKAGE_FILES = RUNTIME_FILES | DOCUMENT_FILES

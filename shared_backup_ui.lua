@@ -12,9 +12,14 @@ local function timestamp(value)
     return ok and type(text) == "string" and text or "Unavailable"
 end
 
-local function balance(copper, state)
+local function amount(terms,value)
+    local a=C.Asset and C.Asset(terms)
+    if a and a.kind=="item" then return tostring(value or a.amount).." x "..a.label end
+    return IOU.Ledger.FormatMoney(value or terms.amountCopper)
+end
+local function balance(copper, state, terms)
     if copper == nil then return "No balance available" end
-    return IOU.Ledger.FormatMoney(copper) .. (state and " / " .. state:lower() or "")
+    return (terms and amount(terms,copper) or IOU.Ledger.FormatMoney(copper)) .. (state and " / " .. state:lower() or "")
 end
 
 local function offerLines(lines, caption, offer)
@@ -27,11 +32,11 @@ local function offerLines(lines, caption, offer)
     if terms then
         lines[#lines+1] = "Proposer: " .. terms.proposer .. " / Recipient: " .. terms.recipient
         lines[#lines+1] = "Debtor: " .. terms.debtor .. " / Creditor: " .. terms.creditor
-        lines[#lines+1] = "Amount: " .. IOU.Ledger.FormatMoney(terms.amountCopper)
-        if terms.kind == "GOLD_OBLIGATION" then
+        lines[#lines+1] = "Amount: " .. amount(terms)
+        if C.IsObligation and C.IsObligation(terms) or terms.kind == "GOLD_OBLIGATION" then
             lines[#lines+1] = "Due: " .. (terms.dueUTC == 0 and "No deadline" or timestamp(terms.dueUTC))
         else
-            lines[#lines+1] = "Event: " .. (terms.kind == "GOLD_CORRECTION" and "Correction" or "Payment")
+            lines[#lines+1] = "Event: " .. ((C.IsCorrection and C.IsCorrection(terms) or terms.kind == "GOLD_CORRECTION") and "Correction" or "Payment")
             lines[#lines+1] = "Original agreement: " .. terms.parentOfferId
             if terms.reversesId ~= "" then lines[#lines+1] = "Reverses payment: " .. terms.reversesId end
         end
@@ -69,10 +74,17 @@ local function previewText(preview)
     if #(preview.balances or {}) > 0 then
         lines[#lines+1] = ""; lines[#lines+1] = "Balance comparison"
         for _, item in ipairs(preview.balances) do
+            local terms
+            for _,row in ipairs(preview.rows or {}) do
+                if row.offerId==item.offerId then
+                    local offer=row.current or row.backup
+                    terms=offer and C.ParseTerms(offer.terms); break
+                end
+            end
             lines[#lines+1] = item.peer .. " / " .. item.offerId
-            lines[#lines+1] = "Backup: " .. balance(item.backupCopper, item.backupState)
-            lines[#lines+1] = "Current: " .. balance(item.currentCopper, item.currentState)
-            lines[#lines+1] = "After restoring missing history: " .. balance(item.candidateCopper, item.candidateState)
+            lines[#lines+1] = "Backup: " .. balance(item.backupCopper, item.backupState,terms)
+            lines[#lines+1] = "Current: " .. balance(item.currentCopper, item.currentState,terms)
+            lines[#lines+1] = "After restoring missing history: " .. balance(item.candidateCopper, item.candidateState,terms)
         end
     end
     local captions = {missing="Missing locally", identical="Identical", different="Different; current version kept", currentOnly="Only on this client; kept"}

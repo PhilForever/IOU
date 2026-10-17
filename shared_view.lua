@@ -8,7 +8,8 @@ local categories = {inbox=true, agreements=true, waiting=true, history=true, all
 local priority = {inbox=1, agreements=2, waiting=3, history=4}
 local states = {OFFER_OPEN=true, OFFER_RECEIVED=true, ACCEPT_PENDING=true,
     DECLINE_PENDING=true, COMMITTED=true, DECLINED=true, WITHDRAWN=true, PAUSED=true}
-local labels = {GOLD_OBLIGATION="Gold agreement", GOLD_PAYMENT="Payment", GOLD_CORRECTION="Correction"}
+local labels = {GOLD_OBLIGATION="Gold agreement", GOLD_PAYMENT="Payment", GOLD_CORRECTION="Correction",
+    ITEM_OBLIGATION="Item agreement", ITEM_PAYMENT="Delivery", ITEM_CORRECTION="Correction"}
 
 local function plain(value)
     return type(value) == "table" and getmetatable(value) == nil
@@ -35,7 +36,7 @@ local function category(offer, terms, balance)
     if offer.state == "OFFER_RECEIVED" then return "inbox" end
     if offer.state == "DECLINED" or offer.state == "WITHDRAWN" then return "history" end
     if offer.state ~= "COMMITTED" or not effective(offer) then return "waiting" end
-    if terms.kind ~= "GOLD_OBLIGATION" then return "history" end
+    if not IOU.SharedCodec.IsObligation(terms) then return "history" end
     if balance.remainingCopper == 0 and not balance.pendingOfferId then return "history" end
     return "agreements"
 end
@@ -46,7 +47,7 @@ local function matches(row, query)
     -- characters retain their exact literal meaning.
     local terms = row.terms
     for _, value in ipairs({row.peer, terms.proposer, terms.recipient,
-        terms.debtor, terms.creditor, terms.note, terms.kind, row.label}) do
+        terms.debtor, terms.creditor, terms.note, terms.kind, row.label, terms.itemName or ""}) do
         if asciiLower(value):find(query, 1, true) then return true end
     end
     return false
@@ -92,7 +93,7 @@ function V.Build(overview, filter, search)
         end
         count = count + 1
     end
-    if count ~= #overview.offers or count > (IOU.Shared and IOU.Shared.MAX_OFFERS or 32) then
+    if count ~= #overview.offers or count > (IOU.Shared and IOU.Shared.MAX_OFFERS or 32)+16 then
         return nil, "The shared overview must contain a complete offer list."
     end
     local query = trim(search or "")
@@ -117,7 +118,7 @@ function V.Build(overview, filter, search)
             return nil, "The shared overview belongs to another character or has an invalid role."
         end
         local balance = overview.balances[offer.offerId]
-        if terms.kind == "GOLD_OBLIGATION" and offer.state == "COMMITTED" then
+        if codec.IsObligation(terms) and offer.state == "COMMITTED" then
             if not plain(balance) or type(balance.confirmed) ~= "boolean"
                 or balance.confirmed ~= effective(offer) or not integer(balance.remainingCopper)
                 or balance.remainingCopper > terms.amountCopper then
@@ -130,10 +131,16 @@ function V.Build(overview, filter, search)
             peer=role == "proposer" and terms.recipient or terms.proposer,
             kind=terms.kind, label=kind, amountCopper=terms.amountCopper,
             direction=terms.debtor == overview.localName and "You owe" or "Owed to you"}
+        if terms.protocol==3 or terms.protocol==4 then
+            row.asset=codec.Asset(terms)
+            row.itemKey,row.itemID,row.itemName=row.asset.itemKey,row.asset.itemID,row.asset.label
+            row.amount=terms.amountCopper
+        end
         row.category = category(offer, terms, balance)
-        if terms.kind == "GOLD_OBLIGATION" and offer.state == "COMMITTED"
+        if codec.IsObligation(terms) and offer.state == "COMMITTED"
             and balance.confirmed then
             row.remainingCopper = balance.remainingCopper
+            if terms.protocol==3 then row.remainingAmount=balance.remainingCopper end
         end
         projection.counts[row.category] = projection.counts[row.category] + 1
         projection.counts.all = projection.counts.all + 1

@@ -5,7 +5,7 @@ local S, C = IOU.Shared, IOU.SharedCodec
 local live = {OFFER_OPEN=true, OFFER_RECEIVED=true, ACCEPT_PENDING=true, DECLINE_PENDING=true}
 
 local function eventTerms(terms)
-    return terms and (terms.kind == "GOLD_PAYMENT" or terms.kind == "GOLD_CORRECTION")
+    return C.IsPayment(terms) or C.IsCorrection(terms)
 end
 local function handshakeCapacity(terms)
     local canonical, err = C.CanonicalTerms(terms)
@@ -25,12 +25,14 @@ local function effective(offer)
     return offer.state == "COMMITTED" and (offer.role == "recipient" or offer.delivery == "PEER_RECEIPT_OBSERVED")
 end
 local function parentBinding(parent, original, terms)
-    return parent and original and original.kind == "GOLD_OBLIGATION" and parent.state == "COMMITTED"
+    return parent and original and C.IsObligation(original) and parent.state == "COMMITTED"
         and parent.messages.commit and terms.parentAgreementId == parent.agreementId
         and terms.parentOfferId == parent.offerId and terms.parentCommitId == parent.messages.commit.commitId
         and terms.parentTerms == parent.terms and terms.proposer == original.proposer
         and terms.recipient == original.recipient and terms.debtor == original.debtor
         and terms.creditor == original.creditor
+        and ((C.Asset(original).kind=="money" and C.Asset(terms).kind=="money")
+            or (terms.itemKey==original.itemKey and terms.itemName==original.itemName))
 end
 local function row(offer, terms)
     return {kind=terms.kind, agreementId=offer.agreementId, offerId=offer.offerId,
@@ -38,16 +40,18 @@ local function row(offer, terms)
         note=terms.note, reversesId=terms.reversesId}
 end
 local function reconstructed(parent, original, item, prefix, base)
-    return {protocol=2, kind=item.kind, proposer=original.proposer, recipient=original.recipient,
+    local result={protocol=original.protocol==3 and 4 or 2, kind=item.kind, proposer=original.proposer, recipient=original.recipient,
         debtor=original.debtor, creditor=original.creditor, amountCopper=item.amountCopper,
         dueUTC=0, note=item.note, parentAgreementId=parent.agreementId,
         parentOfferId=parent.offerId, parentCommitId=parent.messages.commit.commitId,
         parentTerms=parent.terms, baseRevision=#prefix, baseChain=base,
         reversesId=item.reversesId}
+    if original.protocol==3 then result.itemKey,result.itemName=original.itemKey,original.itemName end
+    return result
 end
 local function addFinancial(terms, remaining, payments, reversed, id)
-    if terms.kind == "GOLD_PAYMENT" then
-        if terms.amountCopper > remaining then return nil, "A shared payment exceeds the remaining gold." end
+    if C.IsPayment(terms) then
+        if terms.amountCopper > remaining then return nil, "A shared payment exceeds the remaining balance." end
         payments[id] = terms.amountCopper
         return remaining - terms.amountCopper
     end
@@ -58,14 +62,14 @@ local function addFinancial(terms, remaining, payments, reversed, id)
     reversed[terms.reversesId] = true
     return remaining + amount
 end
-local function viewValidated(store, parentId, closedPaused)
+local function viewValidated(store, parentId, closedPaused, parsedTerms)
     closedPaused = closedPaused or {}
     local parent = store.offers[parentId]
-    local original = parent and C.ParseTerms(parent.terms)
-    if not original or original.kind ~= "GOLD_OBLIGATION" then return nil, "Choose an original shared gold agreement." end
+    local original = parent and (parsedTerms and parsedTerms[parentId] or C.ParseTerms(parent.terms))
+    if not original or not C.IsObligation(original) then return nil, "Choose an original shared agreement." end
     local all, confirmed = {}, {}
-    for _, offer in pairs(store.offers) do
-        local terms = C.ParseTerms(offer.terms)
+    for id, offer in pairs(store.offers) do
+        local terms = parsedTerms and parsedTerms[id] or C.ParseTerms(offer.terms)
         if eventTerms(terms) and terms.parentOfferId == parentId then
             local fits, capacityError=handshakeCapacity(terms)
             if not fits then return nil,capacityError end
@@ -139,11 +143,17 @@ local function viewValidated(store, parentId, closedPaused)
     elseif not ready then reason="Wait for commitment and the other player's acknowledgment of the original agreement."
     elseif pending then reason=awaitingAck and "Wait for the other player's acknowledgment of the latest event."
         or "Resolve or review the unfinished event before proposing another." end
-    return {parentOfferId=parentId, originalCopper=original.amountCopper,
+    local result={parentOfferId=parentId, originalCopper=original.amountCopper,
         paidCopper=original.amountCopper-remaining, remainingCopper=remaining,
         state=remaining == 0 and "SETTLED" or "OPEN", confirmed=ready,
         canPropose=canPropose, blockReason=reason, events=events,
         baseRevision=#chain, baseChain=baseChain, pendingOfferId=pending, awaitingAck=awaitingAck}
+    if original.protocol==3 then
+        local asset=C.Asset(original)
+        result.kind,result.asset,result.itemKey,result.itemID,result.itemName="item",asset,asset.itemKey,asset.itemID,asset.label
+        result.originalAmount,result.paidAmount,result.remainingAmount=original.amountCopper,original.amountCopper-remaining,remaining
+    end
+    return result
 end
 
 function P.View(store,parentId,closedPaused)
@@ -157,19 +167,24 @@ local function views(store, closedPaused)
     local valid, err = S.Validate(store)
     if not valid then return nil, err end
     if closedPaused ~= nil and (type(closedPaused) ~= "table" or getmetatable(closedPaused) ~= nil) then return nil, "Invalid local review records." end
-    for _, offer in pairs(store.offers) do
-        local terms = C.ParseTerms(offer.terms)
+    -- This map belongs only to this validated store and this call. Reuse its
+    -- decoded immutable terms across parent projections, without retaining a
+    -- cache that could outlive a change to the consent history.
+    local parsedTerms = {}
+    for id, offer in pairs(store.offers) do parsedTerms[id] = C.ParseTerms(offer.terms) end
+    for id, offer in pairs(store.offers) do
+        local terms = parsedTerms[id]
         if eventTerms(terms) then
             local parent = store.offers[terms.parentOfferId]
-            local original = parent and C.ParseTerms(parent.terms)
+            local original = parent and parsedTerms[terms.parentOfferId]
             if not parentBinding(parent,original,terms) then return nil, "A shared financial event has no matching committed parent." end
         end
     end
     local result={}
     for id, offer in pairs(store.offers) do
-        local terms = C.ParseTerms(offer.terms)
-        if terms.kind == "GOLD_OBLIGATION" then
-            local view, problem = viewValidated(store,id,closedPaused)
+        local terms = parsedTerms[id]
+        if C.IsObligation(terms) then
+            local view, problem = viewValidated(store,id,closedPaused,parsedTerms)
             if not view then return nil, problem end
             result[id]=view
         end
@@ -192,11 +207,14 @@ local function build(store, parentId, kind, amount, note, reversesId, closedPaus
     if not view.canPropose then return nil, view.blockReason end
     local parent = store.offers[parentId]
     local original = C.ParseTerms(parent.terms)
-    local value = {protocol=2, kind=kind, proposer=original.proposer, recipient=original.recipient,
+    local item=original.protocol==3
+    if item then kind=kind=="GOLD_PAYMENT" and "ITEM_PAYMENT" or "ITEM_CORRECTION" end
+    local value = {protocol=item and 4 or 2, kind=kind, proposer=original.proposer, recipient=original.recipient,
         debtor=original.debtor, creditor=original.creditor, amountCopper=amount, dueUTC=0,
         note=note == nil and "" or note, parentAgreementId=parent.agreementId, parentOfferId=parentId,
         parentCommitId=parent.messages.commit.commitId, parentTerms=parent.terms,
         baseRevision=view.baseRevision, baseChain=view.baseChain, reversesId=reversesId or ""}
+    if item then value.itemKey,value.itemName=original.itemKey,original.itemName end
     local valid, problem = C.ValidateTerms(value)
     if not valid then return nil, problem end
     valid, problem = handshakeCapacity(value)
@@ -218,7 +236,7 @@ function P.BuildCorrection(store,parentId,paymentId,reason,closedPaused)
     if not original.note:find("%S") then reason = "No reason provided" end
     local payment
     for _, event in ipairs(view.events) do
-        if event.offerId == paymentId and event.kind == "GOLD_PAYMENT" and event.effective and not event.reversed then payment=event end
+        if event.offerId == paymentId and C.IsPayment(event) and event.effective and not event.reversed then payment=event end
     end
     if not payment then return nil, "Choose one confirmed payment that has not already been corrected." end
     return build(store,parentId,"GOLD_CORRECTION",payment.amountCopper,reason,paymentId,closedPaused)

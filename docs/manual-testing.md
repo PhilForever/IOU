@@ -1,86 +1,55 @@
-# In-game testing
+# Testing IOU 1.0
 
-Target client: **WoW: Forever**, interface `16001`.
+**Live verification of changes from 0.7 onward is pending.** This is a short ordinary-play check, not a request for screenshots, exports, diagnostic reports, or repeated backup tests. Both players should fully restart WoW with **1.0.0** before the Shared checks.
 
-Use disposable records when trying financial actions. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
+Use small amounts and ordinary materials. Finish or undo one example before creating another with the same player and asset; several open matching debts correctly produce a Review choice.
 
-## Normal-use checks when testing resumes
+## One player, with a friend for transfers
 
-Personal and Shared debts in the trade and tooltip reminders were confirmed working by the user. The user also reported the 0.7 presentation improved. There is no need to repeat those demonstrations or send screenshots/exports.
-
-The user has deferred testing 0.8/0.9. These are optional normal-use checks for later, not a release-time request. Fully restart for the added addon files. Use disposable amounts with a friend:
-
-1. Add a personal IOU saying your friend owes you 10 silver. Have them successfully trade you 3 silver with nothing sent back. The balance should become 7 silver once. Use **Undo** on the notice or `/iou trades`; it should return to 10 silver.
-2. Try the same flow with a small quantity of a linked crafting item. Cancel a separate trade before completion; cancellation must not change the balance. With two eligible IOUs for that friend, the completed trade should wait for a choice in Trade activity rather than choose a debt silently.
-
-3. For 0.9, create a personal IOU that you owe your friend 10 silver, then successfully mail them 3 silver. Your balance should become 7 silver immediately, before collection; postage must not count. Undo should restore 10 silver.
-4. With a personal IOU that your friend owes you, collect matching player mail. Only the amount actually taken should repay it. Reading a letter or a failed collection should leave it unchanged.
-5. For an unrelated recent transfer, open **Activity → Track as IOU**. The player and amount should be ready. Outgoing assets create a debt owed to you; incoming assets create one you owe. Reopening the same activity must not create a second loan.
-
-Report the short result and any full Lua error when convenient. Screenshots, exports, and backup tests are not required. Shared repayments still use confirmation. Concurrent or indistinguishable mailbox operations can be skipped conservatively; the ordinary manual action remains available.
-
-## Validation record
-
-| Version | Evidence | Scope |
+| Check | Do this | Expected result |
 | --- | --- | --- |
-| 0.1.0 | In-game user report on 15 October 2026 | Records survived `/reload` and a full game exit/restart. Basic gold/favor creation, settlement, history, and export were demonstrated. |
-| 0.1.1 | Lua 5.1 regression and mocked UI checks | Updated persistence copy; no new claim of live client verification. |
-| 0.2.0 | Lua 5.1 regression and mocked UI checks, plus package validation | Covers domain logic, backup/migration behavior, and simulated interactions. The live cases below remain to be performed for 0.2.0. |
-| 0.3.0-alpha.1 | Automated regressions, mocked UI, and simulated two-client transport | Adds an opt-in diagnostic only. Ordinary chat whispers shown by the user do not establish addon-message delivery. Live connection reports are pending. |
-| 0.3.0-alpha.2 | Offline shared-engine/codec simulations plus existing regressions | Exercises acceptance, duplicate and lost-message recovery, withdrawal races, strict input validation, and missing consent. No claim of live shared proposals or persisted shared records. |
-| 0.3.0-alpha.3 | Mocked UI, framing, service persistence, and full two-client packet simulations | Exercises the live-path implementation with mock clients, exact terms review, interruption/recovery, character isolation, queue failures, and malformed shared data. Actual client delivery/rendering/persistence are pending; no live result inferred. |
-| 0.3.0-alpha.4 | Payment codec/domain, mocked UI, and full two-client payment packet simulations, plus existing regressions | Exercises partial payment, settlement, full reversal, exact historical binding, lost ACKs, duplicates, reload, stale drafts, and personal-ledger isolation. Live testing remains deferred while servers are unavailable. |
-| 0.3.0 | The same shared implementation promoted to the normal Release channel; automated regressions, publisher checks, and package validation | Distribution changes do not establish live compatibility. Shared delivery, rendering, and shared-record persistence remain unverified. |
-| 0.3.0 diagnostic | User report on 16 October 2026, Forever 1.60.1/build 70425/interface 16001 | Version and local name loaded, prefix registered, four local preflights passed. Listen was rejected by the broad realm restriction flag; no test traffic was sent. This is local setup evidence, not a round trip. |
-| 0.3.1 | Focused UI/report, diagnostic transport, and shared-wire regressions plus existing simulations and publisher/package checks | Removes the unsupported blanket veto while retaining real lockdown and native API failures. Actual logged-whisper delivery remains pending a retry; no live success inferred. |
-| 0.3.1 live report | User and peer reports/screenshots on Forever 1.60.1/build 70425/interface 16001 | Diagnostic sends reported Success but timed out at 0/4. A later Shared agreement reached Agreed/peer receipt and a payment was declined. Overlapping dialogs and delayed edit focus were reported. Shared traffic worked in that session; complete feature/persistence validation remains pending. |
-| 0.3.2 | UI stacking/focus, optional-reason, and protocol-2 diagnostic regressions plus existing simulations and publisher/package checks | Focus/order are verified in mocks; actual latency and protocol-2 delivery need a live retry. Existing Shared records are retained. |
-| 0.3.2 live reports | Two private client reports and user screenshots on 16 October 2026, Forever 1.60.1/build 70425/interface 16001 | All four exact diagnostic echoes succeeded, including Norwegian UTF-8 and 239/240-byte packets. Shared screenshots show acknowledged partial payment, correction using the default reason, and final zero/settled balance. A measured focus-latency result and full restart of Shared data were not explicitly reported. |
-| 0.4.0 | Bounded Shared backup codec, service recovery, and complete-addon UI simulations plus existing checks | Exercises same-character restore, add-missing union, conflicts, retained closure evidence, capacity, stale bindings, recovery gate across reload, explicit decisions, and zero recovery traffic. Live backup/recovery remains pending. |
-| 0.5.0 | Pure presentation and complete-addon workflow checks plus existing suites | Exercises classified views, search/global counts, acknowledged remaining amounts, selection/pagination, explicit selected-peer enabling, stale guards, passive notices, incoming focus/scroll preservation, and detached snapshot rendering. Live workflow and prior recovery verification remain pending. |
-| 0.5.0 live feedback | Private before/after exports, screenshots, and user report on 17 October 2026 | User reported successful backup checks with the existing settled balance and record count retained. Supplied snapshots validate and preserve prior records; they retain the new test proposal as interrupted rather than accepted. Sender Waiting versus recipient Needs review was expected. Board closure/reconnection and paused-offer review were confusing; no completed new financial sequence is inferred from these snapshots. |
-| 0.6.0 | Pure exact-player summary, client-context, and workflow checks plus existing suites | Adds personal-first navigation, target-prefilled creation, read-only tooltip/trade reminders, and window-close session retention. |
-| 0.6.0 live feedback | User report on 17 October 2026 | Personal and Shared IOUs appear in Trade and Tooltip. The user found the addon improved and requested further decluttering. This is sufficient evidence of those live reminders; no repeat screenshots are requested. It does not separately establish every disconnect, failure, or native UI condition. |
-| 0.7.0 | Compact presentation and existing financial/consent regression suites | Shortens the ordinary UI, collapses secondary information, and exposes Requests. No automatic trade/mail balance updates or financial/schema changes. Live usability remains to be assessed through ordinary use. |
-| 0.7.0 live feedback | User report on 17 October 2026 | The user found the addon improved and requested continued automation with less manual input. |
-| 0.8.0 | Trade matching, observer, service, Activity UI, and existing regression suites | Exercises completed/cancelled/failed/duplicate trade observations, exact personal matching, partial/excess amounts, item identity, allocation, Undo, and quiet notices. Native trade completion and event ordering remain pending live use; no automatic Shared consent or mail collection is inferred. |
-| 0.9.0 | Sent/received mail observers, Activity capture, financial integration, and existing suites | Requires send success or confirmed collection; exercises partial assets, failures, duplicates, stale choices, explicit loan creation, and repayment Undo. Existing 0.8/native mail event ordering and readability remain pending; the user deferred testing. No live result is inferred. |
+| Compact UI, target, and reminders | Target your friend, open `/iou`, and create **Owed to me: 10s**. Leave the optional fields blank. Hover them and open a trade. | Name is filled; the IOU, tooltip, and trade reminder show 10s. Inputs respond immediately. Closing the trade without completing it changes nothing. |
+| Trade repayment and Undo | Have the friend successfully trade you **3s**. Open Activity, then use **Undo** for that transfer. | The balance becomes **7s**, then returns to **10s** after Undo. The history retains the payment and reversal. |
+| Cancellation and settlement | Start another 3s trade and cancel it. Then successfully trade the remaining 10s. | Cancellation leaves **10s**. Success leaves **0**, with the settled IOU in History. No duplicate payment appears. |
+| Items and partial quantities | Use **Choose from bags** or a Shift-click link to create an IOU for **5 Linen Cloth** owed to you. Receive **2** through a completed trade. | Remaining balance is **3 Linen Cloth**, never a gold amount. Undo restores 5. An item variant or ambiguous exchange asks for Review. |
+| Crafting entry | In New IOU → Items, select a material from bags. Try **Use stacks**, then add a second material with **+ Add another item** and save. | Known full stacks convert to actual units. Both materials get separate correct balances. An uncached stack size leaves units available instead of guessing. |
+| Deliberate quick capture | Complete a transfer with two assets that have no matching open IOUs. Open Activity and use **Track all**. | Before clicking, no new debt exists. Clicking creates the appropriate gold/item IOUs once, with the player and amounts already filled. Repeating cannot duplicate them. |
+| Successful outgoing mail | Create **I owe: 5s** to the friend. Successfully mail that player **5s**, and do not have them collect it yet. | Your balance becomes **0 immediately after send success**. Postage is excluded. Failed or cancelled sends do nothing. |
+| Incoming mail | Create **Owed to me: 4s**. Have the friend mail 4s. Open/read the mail, then collect the money. | Reading leaves **4s**. Confirmed collection leaves **0**. Reopening the mailbox does not pay it again. Try a material attachment the same way if convenient. |
 
-Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
+Use **More** for manual exceptions or to remove temporary test records from active balances. Existing real records should retain their amounts and history throughout.
 
-The [connection test guide](connection-test.md) is available for investigating transport failures. Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Closing the diagnostic window, `/iou test stop`, or reload must stop diagnostic traffic. The successful 0.3.2 live diagnostic does not need routine repetition.
+## Two players: optional sharing
 
-The [Shared guide](shared-agreements.md) describes the player flow. The 0.3.2 pilot covered payment/correction/settlement. The maintainer cases below retain broader checks for both directions, pending acknowledgment, stale reviews, decline/withdraw races, reduced UI scale, and long Unicode notes. They are a regression reference, not a required player test script.
+1. Both use 1.0.0 with **Options → Requests: on**. No Listen test, pairing, or manually enabled peer is required.
+2. Create a **10s IOU**, enable **Share with player**, and save. The sender sees Sent; the recipient sees Requests. These different views are expected.
+3. The recipient opens **Review**. Confirm the names, direction, and 10s, then click **Accept**. Before that click, it must remain an unaccepted request. After delivery, each player's ordinary ledger shows the corresponding shared debt once.
+4. Close both addon windows. Complete a **3s** trade in the appropriate direction, then reopen IOU. The local automatic repayment should leave **7s**. After the background exchange, both linked records should agree. If a review is required, its amount and resulting balance must be clear.
+5. Use repayment **Undo**, allow the background exchange, and check that both balances return to 10s. A correction that cannot be reconciled safely must remain for review rather than changing unrelated history.
+6. Repeat a small loan with a native **item link and quantity**. Item requests and repayments must show item units throughout.
+7. Decline a separate new request. It must never appear as an agreed debt. Send another request, close/reopen the windows, and accept it; closing a window should not force pairing or local recovery steps.
+8. Reload both clients with an accepted record and a partly paid balance. The same balance and history should remain, with no duplicate personal/Shared rows. Existing older confirmed Shared records stay in Requests; **More → Add to ledger** is a deliberate conversion, not an automatic new loan.
 
-Optional recovery regression: preview your own Shared export, stage it, reload, and restore missing history or keep current records. Existing records/counts/balances must remain unchanged and sharing stays off. Do not delete live SavedVariables to simulate loss; use disposable harness data for missing-record cases.
+A successfully sent mail payment counts locally even while the recipient has not collected it. Peer synchronization can be pending independently; an unacknowledged packet must not be reported as delivered. The addon never transfers gold/items itself.
 
-## Live regression cases
+## What to report
 
-This is a maintainer regression reference, not a required player checklist. Some cases have live evidence in the table above; others remain unverified for the current release. Update the record with actual results instead of inferring success from mocks.
+A short text result is enough, for example: **“Trade 10s → 7s → Undo 10s passed; sent mail settled before collection; shared items still showed Pending sync.”**
 
-| Case | Steps | Expected result |
+For a failure, give the action, expected amount, actual amount/status, which player saw it, and any full Lua error. Report input lag or clipped controls in words if that is easier. Screenshots and exports are optional; never post real ledgers or account files in a public issue.
+
+## Evidence already available
+
+| Version | Actual evidence | Limit |
 | --- | --- | --- |
-| First install | Install the release ZIP with `AddOns/IOU/IOU.toc`, fully restart, enable IOU, and enter `/iou`. | Ledger opens without a Lua error; only this character's data appears. |
-| Upgrade an existing ledger | Keep a private export, install the current release, and log in with existing records. | Names, original amounts, balances, notes, payment events, and corrections are retained. No extra payments appear. |
-| Gold and directions | Create one agreement in each direction with gold, silver, and copper. | Entries appear in the correct tabs and summary cards; all balances use exact copper. |
-| Items and favors | Create item and favor agreements. Insert a Shift-click item link into the focused item field. | Labels remain readable, links remain intact, and quantities do not affect gold totals. |
-| Partial payment and settlement | Repay part of an agreement, then settle its remainder. | Balance decreases by the entered amount, history retains both actions, and the settled entry moves to History. Overpayment is rejected. |
-| Correct a repayment | Reverse a payment with a reason, including one on a settled agreement. | The correction and reason are recorded, the original payment stays visible, and an outstanding balance reopens in the correct tab. |
-| Edit details | Use Edit details to change player, label, note, and due date with a reason. | Details update and history records the changes. Financial amount, type, and direction cannot be changed through this form. |
-| Cancel and reopen | Use More to cancel an unpaid and a partially paid agreement, then reopen each with an optional reason. | Cancellation retains history and removes active balances without creating a repayment; reopening brings back the same remaining balance. |
-| Due dates | Use a past day, today, a future day, blank input, and an impossible date such as `2026-02-30`. | Past open entries are overdue; today remains current until local end of day; blank removes the due date; invalid dates are rejected. |
-| Login reminders | Create overdue entries in both directions, reload with reminders enabled, then disable reminders and reload again. | Counts describe this character's overdue open agreements. Disabling reminders suppresses the login summary. |
-| Find and sort | Search by player, label, and note. Change type filters and each sort option with several records. | Results and displayed summaries match the active filters; sort is consistent; selected records and pagination remain usable. |
-| History and long text | Open settled/cancelled entries and an agreement with many events and a long Unicode note. | Paging and scrolling work; Full note shows the complete stored text without clipping or loss. |
-| Minimap launcher | Click and drag the launcher, hide/show it through settings and commands, then reload. | Toggle works; placement and visibility persist; hiding it does not remove command access. |
-| Keybinding | Find IOU in keybindings, assign a key, and press it with chat closed. | The binding toggles the ledger without errors; no default key is taken over. |
-| Window placement | Drag the header, close/reopen, reload, then run `/iou resetpos`. | Placement survives reopen/reload; reset returns it to a usable position. |
-| Backup round trip | Export a ledger containing new fields, preview it, cancel, then preview and confirm. | Cancel changes nothing; confirmed replacement retains amounts, history, due dates, edits, cancellations, and Unicode. |
-| Previous ledger | Change the current ledger, confirm an import, then preview Previous ledger. | The snapshot matches the ledger immediately before replacement; another confirmed import replaces that one snapshot. |
-| Legacy and invalid import | Preview a synthetic `IOU1:` backup and malformed/truncated text. | Valid legacy data upgrades with intact records; invalid input gives a useful error and does not change the ledger. |
-| Character isolation | Create different entries on two characters, then switch between them. | Each character gets its own agreements and overdue counts; imports replace only the current ledger. Display/reminder preferences are shared. |
-| Persistence | Create, pay, edit, and cancel records. Run `/reload`, then log out and fully exit/restart the game. | Records and settings survive both paths, with no duplicated history events. |
-| Layout and other addons | Check normal and reduced UI scales, at least two resolutions, tooltips, item links, and other commonly used UI addons. | Forms, close buttons, lists, notes, and confirmation controls remain readable and reachable. |
-| Combat interactions | Open/close the ledger and launcher in and out of combat, then inspect errors. | Normal gameplay is unaffected and no blocked action or taint error appears. |
+| 0.1.0 | User reported personal records surviving `/reload` and a full restart. | Does not establish later observers or Shared links. |
+| 0.3.2 | Two clients completed 4/4 exact ASCII/UTF-8 diagnostic echoes; live Shared payment, correction, and settlement were demonstrated. | Does not establish new background synchronization or trade/mail detection. |
+| 0.5.0 | User reported successful backup checks; supplied private snapshots retained prior records. | The new test offer in those snapshots was interrupted. |
+| 0.6.0 | User confirmed personal and Shared debts appearing in Trade and Tooltip. | Later UI and automatic repayments were not separately verified. |
+| 0.7–1.0 | Automated financial, parser, observer, UI, and simulated two-client checks. | Live testing remains deferred. No new in-game pass is inferred from mocks. |
 
-For a bug report, include the smallest sequence that reproduces the issue and the full Lua error text. Avoid posting account files or real ledger exports in public.
+## Maintainer regression reference
+
+Run `python tools/test_iou.py`, `python tools/test_curseforge.py`, and `python tools/package_iou.py`. The suites exercise financial limits, duplicates, cancellation/failure paths, strict item identity, stale choices, atomic mutations, consent, background inbox bounds, replay/reload, and recovery.
+
+Additional client checks can cover UI scaling/resolutions, combat taint, other mailbox/trade addons, character isolation, full restart persistence, ambiguous exchanges, full bags, offline peers, and optional export/recovery. Do not delete live SavedVariables to simulate loss; use disposable harness data. The [connection diagnostic](connection-test.md) is available for an actual transport failure, not as a routine prerequisite.

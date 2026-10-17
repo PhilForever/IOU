@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.9.0"
+IOU.VERSION = "1.0.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -69,6 +69,7 @@ function IOU.Initialize()
     if type(settings.tradeReminders) ~= "boolean" then settings.tradeReminders = true end
     if type(settings.autoTradeRepayments) ~= "boolean" then settings.autoTradeRepayments = true end
     if type(settings.autoMailRepayments) ~= "boolean" then settings.autoMailRepayments = true end
+    if type(settings.sharedRequests) ~= "boolean" then settings.sharedRequests = true end
     if type(settings.minimapAngle) ~= "number" or settings.minimapAngle ~= settings.minimapAngle
         or settings.minimapAngle < 0 or settings.minimapAngle > 360 then settings.minimapAngle = 225 end
     local anchors = {TOPLEFT=true, TOP=true, TOPRIGHT=true, LEFT=true, CENTER=true,
@@ -133,15 +134,50 @@ local function mutate(method, ...)
     ledger = draft
     if IOU.PlayerContext then IOU.PlayerContext.Invalidate() end
     if IOU.Refresh then IOU.Refresh() end
+    if IOU.Sharing then pcall(IOU.Sharing.OnPersonalChanged) end
     return result
 end
 
 function IOU.Add(fields) return mutate(L.Add, fields) end
+function IOU.AddBundle(fields)
+    local function addAll(draft,value,stamp)
+        if type(value)~="table" or getmetatable(value) or type(value.items)~="table" or getmetatable(value.items)
+            or #value.items<1 or #value.items>12 then return nil,"Choose up to 12 materials." end
+        local count=0
+        for index in pairs(value.items) do
+            if type(index)~="number" or index~=math.floor(index) or index<1 or index>#value.items then return nil,"Invalid materials list." end
+            count=count+1
+        end
+        if count~=#value.items then return nil,"Invalid materials list." end
+        local entries={}
+        for _,item in ipairs(value.items) do
+            if type(item)~="table" or getmetatable(item) then return nil,"Invalid material." end
+            local entry,err=L.Add(draft,{player=value.player,direction=value.direction,kind="item",
+                amount=item.amount,label=item.label,note=value.note or "",due=value.due or 0},stamp)
+            if not entry then return nil,err end
+            entries[#entries+1]=entry
+        end
+        return entries
+    end
+    return mutate(addAll,fields)
+end
 function IOU.Pay(id, amount, note) return mutate(L.Pay, id, amount, note or "") end
 function IOU.Settle(id, note) return mutate(L.Settle, id, note or "") end
 function IOU.Reverse(id, eventID, reason) return mutate(L.Reverse, id, eventID, reason == nil and "" or reason) end
-function IOU.Amend(id, fields, reason) return mutate(L.Amend, id, fields, reason == nil and "" or reason) end
-function IOU.Cancel(id, reason) return mutate(L.Cancel, id, reason == nil and "" or reason) end
+function IOU.Amend(id, fields, reason)
+    local link=IOU.Sharing and IOU.Sharing.GetLink(id)
+    local entry=L.Get(IOU.GetLedger(),id)
+    if link and link.state~="declined" and entry and type(fields)=="table"
+        and (fields.player~=entry.player or fields.label~=entry.label) then
+        return nil,"Shared player and item terms stay fixed. Use Requests for this IOU."
+    end
+    return mutate(L.Amend, id, fields, reason == nil and "" or reason)
+end
+function IOU.Cancel(id, reason)
+    local link=IOU.Sharing and IOU.Sharing.GetLink(id)
+    if link and link.state~="declined" then return nil,"This IOU is shared. Open Requests to review or settle it." end
+    return mutate(L.Cancel, id, reason == nil and "" or reason)
+end
 function IOU.Restore(id, reason) return mutate(L.Restore, id, reason == nil and "" or reason) end
 
 -- Financial events and their deduplication receipt are committed together.
@@ -158,6 +194,22 @@ function IOU.CommitTradeState(expectedLedger, candidate, expectedTrades, trades)
     IOUDB.tradesByCharacter[character]=trades
     if changed and IOU.PlayerContext then pcall(IOU.PlayerContext.Invalidate) end
     if changed and IOU.Refresh then pcall(IOU.Refresh) end
+    if changed and IOU.Sharing then pcall(IOU.Sharing.OnPersonalChanged) end
+    return true
+end
+
+function IOU.CommitSharingState(expectedLedger,candidate,expectedLinks,links)
+    if not ready() then return nil,"The ledger is unavailable." end
+    if ledger~=expectedLedger or type(IOUDB.sharingByCharacter)~="table"
+        or IOUDB.sharingByCharacter[character]~=expectedLinks then return nil,"The IOU changed. Try again." end
+    local encoded,err=C.Export(candidate); if not encoded then return nil,err end
+    local staged; staged,err=C.Import(encoded); if not staged then return nil,err end
+    local ok; ok,err=IOU.Sharing.Validate(links); if not ok then return nil,err end
+    local changed=encoded~=C.Export(ledger)
+    if changed then IOUDB.characters[character]=staged; ledger=staged end
+    IOUDB.sharingByCharacter[character]=links
+    if IOU.PlayerContext then pcall(IOU.PlayerContext.Invalidate) end
+    if IOU.Refresh then pcall(IOU.Refresh) end
     return true
 end
 
@@ -197,6 +249,7 @@ function IOU.ReplaceLedger(candidate)
     previous, problem = C.Export(ledger)
     if not previous then return nil, problem end
     IOUDB.recovery[character] = previous
+    if IOU.Sharing then return IOU.Sharing.CommitImport(copy) end
     IOUDB.characters[character] = copy
     ledger = copy
     if IOU.PlayerContext then IOU.PlayerContext.Invalidate() end
@@ -286,6 +339,7 @@ events:SetScript("OnEvent", function()
             if IOU.MailReceived then IOU.MailReceived.Initialize() end
         else IOU.Message(tradeError) end
     end
+    if IOU.Sharing then IOU.Sharing.Initialize() end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then
         local options = {now = time()}

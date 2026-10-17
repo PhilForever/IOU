@@ -6,6 +6,7 @@ local W = {PREFIX="IOU_SHAREDv1", VERSION=1, MAX_PACKET_BYTES=240, MAX_PARTS=32,
 IOU.SharedWire = W
 local MAX_ID, MAX_COMPLETED = 32, 8
 local frame, enabled, peer, receiver, assembler, nonce = nil, false, nil, nil, nil, nil
+local background, inboxes, ownName = false, {}, nil
 local serial, lastSend, queue, lastError = 0, -1000000, {}, nil
 local sent, unknown, received = 0, 0, 0
 local receiveTokens,tokenAt,lastRateNotice=0,0,-1000000
@@ -198,7 +199,7 @@ local function queuedPackets()
     return count
 end
 local function needsDriver()
-    return enabled and (#queue>0 or (assembler and next(assembler.entries)~=nil))
+    return enabled and (#queue>0 or (assembler and next(assembler.entries)~=nil) or next(inboxes)~=nil)
 end
 local function driver()
     if frame then frame:SetScript("OnUpdate",needsDriver() and function() W.Tick() end or nil) end
@@ -206,13 +207,15 @@ end
 local function stopForClock()
     enabled,peer,receiver,assembler,nonce=false,nil,nil,nil,nil
     queue={}
+    background,inboxes,ownName=false,{},nil
     lastError="Shared monotonic clock is unavailable. Communication stopped; reconnect and use Retry."
     driver(); changed()
 end
 
 local function incoming(_,event,prefix,packet,channel,sender)
     if not enabled or event~="CHAT_MSG_ADDON_LOGGED" or not plain(prefix) or prefix~=W.PREFIX
-        or not plain(channel) or channel~="WHISPER" or not identity(sender) or sender~=peer then return end
+        or not plain(channel) or channel~="WHISPER" or not identity(sender)
+        or (not background and sender~=peer) or ownName and asciiLower(sender)==asciiLower(ownName) then return end
     local now=clock()
     if not now then stopForClock(); return end
     receiveTokens=math.min(W.MAX_RECEIVE_PACKETS,receiveTokens+math.max(0,now-tokenAt)
@@ -227,7 +230,42 @@ local function incoming(_,event,prefix,packet,channel,sender)
         return
     end
     receiveTokens=receiveTokens-1
-    local logical,err=W.Reassemble(assembler,sender,packet,now)
+    local target=assembler
+    if background then
+        local count=0
+        for name,state in pairs(inboxes) do
+            W.Expire(state,now)
+            if next(state.entries)==nil then inboxes[name]=nil else count=count+1 end
+        end
+        target=inboxes[sender]
+        if not target then
+            if count>=W.MAX_ASSEMBLIES then return end
+            target=W.NewAssembler(sender); inboxes[sender]=target
+        end
+    end
+    if background then
+        local parsed=W.ParsePacket(packet)
+        if not parsed then return end
+        local bytes,active=0,0
+        for _,state in pairs(inboxes) do
+            bytes=bytes+state.bytes
+            for _,entry in pairs(state.entries) do if not entry.complete then active=active+1 end end
+        end
+        if not target.entries[parsed.id] and active>=W.MAX_ASSEMBLIES then return end
+        if bytes+#parsed.body>W.MAX_BUFFER_BYTES then
+            for _,state in pairs(inboxes) do
+                for id,entry in pairs(state.entries) do
+                    if entry.complete then
+                        state.entries[id]=nil;state.bytes=state.bytes-entry.bytes;bytes=bytes-entry.bytes
+                        if bytes+#parsed.body<=W.MAX_BUFFER_BYTES then break end
+                    end
+                end
+                if bytes+#parsed.body<=W.MAX_BUFFER_BYTES then break end
+            end
+            if bytes+#parsed.body>W.MAX_BUFFER_BYTES then return end
+        end
+    end
+    local logical,err=W.Reassemble(target,sender,packet,now)
     driver()
     if not logical then return end
     local codec=IOU.SharedCodec
@@ -242,20 +280,21 @@ end
 function W.Disable()
     enabled,peer,receiver,assembler,nonce=false,nil,nil,nil,nil
     queue={}
+    background,inboxes,ownName=false,{},nil
     lastError=nil
     driver(); changed()
     return true
 end
 function W.IsEnabled() return enabled end
 function W.GetPeer() return peer end
-function W.Enable(expectedPeer,onReceive)
+local function enable(expectedPeer,onReceive,allPeers)
     if type(onReceive)~="function" then return nil,"A shared message receiver is required." end
-    if not identity(expectedPeer) then return nil,"Use the player's exact full name with single spaces." end
+    if not allPeers and not identity(expectedPeer) then return nil,"Use the player's exact full name with single spaces." end
     local helper=IOU.Transport
     if type(helper)~="table" or type(helper.GetLocalName)~="function" then return nil,"Local player identity is unavailable." end
     local ok,own=pcall(helper.GetLocalName)
     if not ok or not identity(own) then return nil,"Local player identity is unavailable." end
-    if asciiLower(own)==asciiLower(expectedPeer) then return nil,"Choose another player; shared agreements require two clients." end
+    if not allPeers and asciiLower(own)==asciiLower(expectedPeer) then return nil,"Choose another player; shared agreements require two clients." end
     if type(IOU.SharedCodec)~="table" or type(IOU.SharedCodec.Encode)~="function" or type(IOU.SharedCodec.Decode)~="function" then return nil,"Shared message codec is unavailable." end
     local problem=restriction()
     if problem then return nil,problem end
@@ -272,13 +311,18 @@ function W.Enable(expectedPeer,onReceive)
         if not bound then frame=nil; return nil,"Client logged addon event is unavailable." end
     end
     enabled,peer,receiver=true,expectedPeer,onReceive
-    assembler=W.NewAssembler(peer)
+    background,inboxes,ownName=allPeers==true,{},own
+    assembler=not background and W.NewAssembler(peer) or nil
     nonce=string.format("%x-%x",math.floor((now%2147483647)*1000)%2147483647,math.random(0,16777215))
     serial,queue,lastError,sent,unknown,received=0,{},nil,0,0,0
     receiveTokens,tokenAt,lastRateNotice=W.MAX_RECEIVE_PACKETS,now,-1000000
     driver(); changed()
     return true
 end
+function W.Enable(expectedPeer,onReceive) return enable(expectedPeer,onReceive,false) end
+function W.EnableBackground(onReceive) return enable(nil,onReceive,true) end
+function W.IsBackground() return enabled and background end
+function W.QueueSize() return #queue end
 
 local function stage(actions)
     if not enabled then return nil,"Enable shared communication with this player first." end
@@ -294,7 +338,8 @@ local function stage(actions)
         if type(action)~="table" or getmetatable(action)~=nil then return nil,"Invalid shared action." end
         local fields=0
         for field in pairs(action) do if field~="target" and field~="message" then return nil,"Unknown shared action field." end; fields=fields+1 end
-        if fields~=2 or not identity(action.target) or action.target~=peer then return nil,"Shared action target is not the enabled peer." end
+        if fields~=2 or not identity(action.target) or (not background and action.target~=peer)
+            or ownName and asciiLower(action.target)==asciiLower(ownName) then return nil,"Shared action target is not the enabled peer." end
         local logical,err=IOU.SharedCodec.Encode(action.message)
         if not logical then return nil,err end
         if nextSerial>=2147483647 then return nil,"Shared transfer identifier capacity reached." end
@@ -304,7 +349,7 @@ local function stage(actions)
         if not framed then return nil,err end
         packets=packets+#framed
         if packets>W.MAX_QUEUE_PACKETS then return nil,"Shared packet queue is full; wait before retrying." end
-        staged[#staged+1]={target=peer,packets=framed,index=1}
+        staged[#staged+1]={target=action.target,packets=framed,index=1}
     end
     return staged,nextSerial
 end
@@ -326,7 +371,11 @@ function W.Tick()
     if not enabled then return end
     local now=clock()
     if not now then stopForClock(); return end
-    W.Expire(assembler,now)
+    if assembler then W.Expire(assembler,now) end
+    for name,state in pairs(inboxes) do
+        W.Expire(state,now)
+        if next(state.entries)==nil then inboxes[name]=nil end
+    end
     if #queue>0 and now-lastSend>=W.PACE then
         local problem=restriction()
         if problem then queue={}; lastError=problem.." Pending sends stopped; use Retry."; driver(); changed(); return end
@@ -347,6 +396,6 @@ end
 function W.GetStatus()
     if lastError then return lastError end
     if not enabled then return "Shared communication is off." end
-    return "Shared peer: "..peer..". "..#queue.." messages / "..queuedPackets().." packets queued; "
+    return (background and "Shared background. " or "Shared peer: "..peer..". ")..#queue.." messages / "..queuedPackets().." packets queued; "
         ..sent.." packets submitted, "..unknown.." unknown API results, "..received.." messages received. Submission is not peer confirmation."
 end

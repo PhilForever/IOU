@@ -5,6 +5,7 @@ local L, C, M = IOU.Ledger, IOU.Codec, IOU.TradeMatching
 local store, failure
 local reserved={}
 local MAX_RECEIPTS, MAX_APPS, MAX_TOTAL = 100, 32, L.MAX_AMOUNT * L.MAX_ENTRIES
+local MAX_CANDIDATES=L.MAX_ENTRIES+(IOU.Shared and IOU.Shared.MAX_OFFERS or 32)
 local media={trade="tr",mail_sent="ms",mail_received="mr"}
 S.MAX_RECEIPTS = MAX_RECEIPTS
 
@@ -43,7 +44,7 @@ local function tree(value, depth, budget, seen)
     for key,item in pairs(value) do
         budget.nodes=budget.nodes+1
         if budget.nodes>60000 or not public(key)
-                or not (type(key)=="string" and #key<=64 or integer(key,1,L.MAX_ENTRIES+32))
+                or not (type(key)=="string" and #key<=64 or integer(key,1,MAX_CANDIDATES))
             or not tree(item,depth+1,budget,seen) then return false end
     end
     seen[value]=nil
@@ -120,7 +121,7 @@ local function validate(value)
         for _,row in ipairs(r.pending) do
             if not integer(row.amount,1,MAX_TOTAL) or not text(row.label,512) or not text(row.reason,240)
                 or (row.direction~="owed" and row.direction~="owe") or (row.asset~="money" and row.asset~="item")
-                or not array(row.candidates,L.MAX_ENTRIES+32) then return nil,"A trade allocation is invalid." end
+                or not array(row.candidates,MAX_CANDIDATES) then return nil,"A trade allocation is invalid." end
             for _,candidate in ipairs(row.candidates) do
                 if not integer(candidate.balance,1,L.MAX_AMOUNT) or not text(candidate.label,512)
                     or not (candidate.source=="personal" and integer(candidate.entryID,1,L.MAX_ENTRIES)
@@ -340,40 +341,67 @@ local function verifyCaptures(before,original)
     end
     return true
 end
+local function captureRow(draft,r,row,at)
+    if not integer(row.amount,1,L.MAX_AMOUNT) then return nil,"This amount is too large for one IOU." end
+    local label=""
+    if row.asset=="item" then
+        for _,item in ipairs((row.direction=="owed" and r.incoming or r.outgoing).items) do
+            if M.ItemKey(item.link)==row.itemKey then label=item.link; break end
+        end
+        if label=="" then return nil,"The transferred item is unavailable." end
+    end
+    local direction=row.direction=="owe" and "owed" or "owe"
+    local entry,err=L.Add(draft,{player=r.peer,direction=direction,kind=row.asset,
+        amount=row.amount,label=label,note=receiptNote(r),due=0},at)
+    if not entry then return nil,err end
+    r.captures=r.captures or {}
+    r.captures[#r.captures+1]={entryID=entry.id,direction=row.direction,loanDirection=direction,
+        asset=row.asset,amount=row.amount,label=row.asset=="money" and "Gold" or label,
+        itemID=row.itemID,itemKey=row.itemKey,at=at}
+    return true
+end
+local function sameCaptureAsset(expected,row)
+    return type(expected)=="table" and assetKey(expected)==assetKey(row)
+        and expected.amount==row.amount and expected.label==row.label
+end
 function S.Capture(id,unmatchedIndex,expected)
     local ok,err=ready(); if not ok then return nil,err end
     local original=locate(id)
     if not original or not integer(unmatchedIndex,1,#original.unmatched) then return nil,"Choose an unassigned transfer first." end
     local row=original.unmatched[unmatchedIndex]
-    if expected~=nil then
-        if not tree(expected,0,{bytes=0,nodes=0},{}) or type(expected)~="table"
-            or assetKey(expected)~=assetKey(row) or expected.amount~=row.amount or expected.label~=row.label then
-            return nil,"This transfer changed. Choose it again."
-        end
+    if expected~=nil and (not tree(expected,0,{bytes=0,nodes=0},{}) or not sameCaptureAsset(expected,row)) then
+        return nil,"This transfer changed. Choose it again."
     end
-    if not integer(row.amount,1,L.MAX_AMOUNT) then return nil,"This amount is too large for one IOU." end
     local before=IOU.GetLedger()
     ok,err=verifyApplications(before,original); if not ok then return nil,err end
     ok,err=verifyCaptures(before,original); if not ok then return nil,err end
-    local label=""
-    if row.asset=="item" then
-        for _,item in ipairs((row.direction=="owed" and original.incoming or original.outgoing).items) do
-            if M.ItemKey(item.link)==row.itemKey then label=item.link; break end
-        end
-        if label=="" then return nil,"The transferred item is unavailable." end
-    end
     local at=timestamp(); if not at then return nil,"The timestamp is unavailable." end
     local draft; draft,err=ledgerDraft(); if not draft then return nil,err end
-    local direction=row.direction=="owe" and "owed" or "owe"
-    local entry; entry,err=L.Add(draft,{player=original.peer,direction=direction,kind=row.asset,
-        amount=row.amount,label=label,note=receiptNote(original),due=0},at)
-    if not entry then return nil,err end
     local candidate=copy(store); local r=locate(id,candidate)
-    r.captures=r.captures or {}
-    r.captures[#r.captures+1]={entryID=entry.id,direction=row.direction,loanDirection=direction,
-        asset=row.asset,amount=row.amount,label=row.asset=="money" and "Gold" or label,
-        itemID=row.itemID,itemKey=row.itemKey,at=at}
+    ok,err=captureRow(draft,r,row,at); if not ok then return nil,err end
     table.remove(r.unmatched,unmatchedIndex)
+    if r.status~="undone" then r.status=status(r) end
+    return commit(before,draft,candidate,r)
+end
+function S.CaptureAll(id,expectedUnmatched)
+    local ok,err=ready(); if not ok then return nil,err end
+    local original=locate(id)
+    if not original or #original.unmatched==0 then return nil,"Choose unassigned transfers first." end
+    if not tree(expectedUnmatched,0,{bytes=0,nodes=0},{}) or not array(expectedUnmatched,26)
+        or #expectedUnmatched~=#original.unmatched then return nil,"This transfer changed. Review it again." end
+    for index,row in ipairs(original.unmatched) do
+        if not sameCaptureAsset(expectedUnmatched[index],row) then return nil,"This transfer changed. Review it again." end
+    end
+    local before=IOU.GetLedger()
+    ok,err=verifyApplications(before,original); if not ok then return nil,err end
+    ok,err=verifyCaptures(before,original); if not ok then return nil,err end
+    local at=timestamp(); if not at then return nil,"The timestamp is unavailable." end
+    local draft; draft,err=ledgerDraft(); if not draft then return nil,err end
+    local candidate=copy(store); local r=locate(id,candidate)
+    for _,row in ipairs(original.unmatched) do
+        ok,err=captureRow(draft,r,row,at); if not ok then return nil,err end
+    end
+    r.unmatched={}
     if r.status~="undone" then r.status=status(r) end
     return commit(before,draft,candidate,r)
 end

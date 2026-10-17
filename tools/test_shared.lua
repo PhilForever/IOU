@@ -531,13 +531,13 @@ end)
 
 test("retained offer capacity rejects excess work without evicting earlier history", function()
     local sim=simulation()
-    for index=1,32 do
+    for index=1,S.MAX_OFFERS do
         sim:apply(sim.a,"Propose",terms(),"capacity-g-"..index,"capacity-o-"..index,sim.now)
     end
     local before=copy(sim.a.store)
-    sim:rejected(sim.a,"Propose",terms(),"capacity-g-33","capacity-o-33",sim.now)
+    sim:rejected(sim.a,"Propose",terms(),"capacity-g-excess","capacity-o-excess",sim.now)
     assert(same(sim.a.store,before))
-    for index=1,32 do assert(sim.a.store.offers["capacity-o-"..index]) end
+    for index=1,S.MAX_OFFERS do assert(sim.a.store.offers["capacity-o-"..index]) end
     assert(same(saved,original))
 end)
 

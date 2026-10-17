@@ -3,9 +3,9 @@ local Summary = {}
 IOU.PlayerSummary = Summary
 
 -- A read-only projection for player tooltips and trade reminders. Personal
--- notes and mutually acknowledged agreements stay separate: they may describe
--- the same debt, so adding the two sources together could count it twice.
-local MAX_NAME, MAX_SHARED, MAX_SAFE = 96, 32, 9007199254740991
+-- notes and mutually acknowledged agreements stay separate. Explicit, verified
+-- links identify one debt across both sources; its personal balance is primary.
+local MAX_NAME, MAX_SHARED, MAX_SAFE = 96, (IOU.Shared and IOU.Shared.MAX_OFFERS or 32)+16, 9007199254740991
 local states = {OFFER_OPEN=true, OFFER_RECEIVED=true, ACCEPT_PENDING=true,
     DECLINE_PENDING=true, COMMITTED=true, DECLINED=true, WITHDRAWN=true, PAUSED=true}
 
@@ -54,7 +54,10 @@ local function add(total, amount)
     return total + amount
 end
 local function labels(rows)
-    table.sort(rows, function(a, b) return a.label < b.label end)
+    table.sort(rows, function(a,b)
+        if a.label~=b.label then return a.label<b.label end
+        return (a.itemKey or "")<(b.itemKey or "")
+    end)
 end
 
 local function personal(db, key)
@@ -101,7 +104,61 @@ local function personal(db, key)
     return result, count
 end
 
-local function shared(overview, key)
+-- A link is a one-to-one claim, never a guess based on matching balances.
+-- Treat malformed or stale maps as absent so they cannot hide Shared debt.
+local function linkedEntries(db,overview)
+    local result={}
+    if not plain(overview) or overview.links==nil then return result end
+    if not plain(overview.links) or (overview.linkBases~=nil and not plain(overview.linkBases)) then return result end
+    local L,C=IOU.Ledger,IOU.SharedCodec
+    if not L or not C or not L.Validate(db) then return result end
+    local entries,offers,claimed,count={},{},{},0
+    for _,entry in ipairs(db.entries) do entries[entry.id]=entry end
+    if not plain(overview.offers) then return result end
+    local offerCount=0
+    for index in pairs(overview.offers) do
+        if not integer(index,MAX_SHARED) or index<1 then return result end
+        offerCount=offerCount+1
+    end
+    if offerCount~=#overview.offers or offerCount>MAX_SHARED then return result end
+    for _,offer in ipairs(overview.offers) do
+        if not plain(offer) or not text(offer.offerId,64) or offers[offer.offerId] then return {} end
+        offers[offer.offerId]=offer
+    end
+    for id,offerId in pairs(overview.links) do
+        if not integer(id,L.MAX_ENTRIES) or id<1 or not text(offerId,64)
+            or not offerId:match("^[A-Za-z0-9_-]+$") or claimed[offerId] then return {} end
+        claimed[offerId]=true; count=count+1
+        if count>L.MAX_ENTRIES then return {} end
+    end
+    for id,base in pairs(overview.linkBases or {}) do
+        if not public(id) or overview.links[id]==nil or not integer(base,L.MAX_AMOUNT) then return {} end
+    end
+    for id,offerId in pairs(overview.links) do
+        local entry,offer=entries[id],offers[offerId]
+        local terms=offer and C.ParseTerms(offer.terms)
+        local base=(overview.linkBases or {})[id] or 0
+        if entry and terms and C.IsObligation(terms) and L.Status(entry)~="cancelled"
+            and entry.amount-base==terms.amountCopper and L.Balance(entry)<=terms.amountCopper then
+            local role=terms.proposer==overview.localName and "proposer"
+                or terms.recipient==overview.localName and "recipient" or nil
+            local peer=role=="proposer" and terms.recipient or terms.proposer
+            local direction=terms.creditor==overview.localName and "owed" or "owe"
+            local asset=C.Asset(terms)
+            local sameAsset=asset and (asset.kind=="money" and entry.kind=="money"
+                or asset.kind=="item" and entry.kind=="item" and C.CanonicalItem(entry.label)==asset.itemKey)
+            if role and offer.role==role and Summary.NameKey(entry.player)==Summary.NameKey(peer)
+                and entry.direction==direction and sameAsset then result[offerId]=id end
+        end
+    end
+    return result
+end
+function Summary.LinkedEntries(db,overview)
+    local ok,result=pcall(linkedEntries,db,overview)
+    return ok and result or {}
+end
+
+local function shared(overview, key, links)
     if not plain(overview) or not plain(overview.offers) or not plain(overview.balances)
         or not Summary.NameKey(overview.localName) then
         return nil, "Shared balances are unavailable."
@@ -117,6 +174,7 @@ local function shared(overview, key)
     end
     if count > MAX_SHARED or count ~= #overview.offers then return nil, "The shared offer list is incomplete." end
     local result, matches, seen = source(), 0, {}
+    local grouped={owed={},owe={}}
     for _, offer in ipairs(overview.offers) do
         if not plain(offer) or not text(offer.offerId, 64) or offer.offerId == ""
             or seen[offer.offerId] or not public(offer.state) or not states[offer.state]
@@ -130,7 +188,7 @@ local function shared(overview, key)
         local role = terms.proposer == overview.localName and "proposer"
             or (terms.recipient == overview.localName and "recipient" or nil)
         if not role or offer.role ~= role then return nil, "Shared records belong to another character." end
-        if terms.kind == "GOLD_OBLIGATION" and offer.state == "COMMITTED" then
+        if codec.IsObligation(terms) and offer.state == "COMMITTED" then
             local balance = overview.balances[offer.offerId]
             local acknowledged = role == "recipient" or offer.delivery == "PEER_RECEIPT_OBSERVED"
             if not plain(balance) or not public(balance.confirmed) or type(balance.confirmed) ~= "boolean"
@@ -138,15 +196,29 @@ local function shared(overview, key)
                 return nil, "The confirmed shared balance is unavailable."
             end
             local peer = role == "proposer" and terms.recipient or terms.proposer
-            if acknowledged and balance.remainingCopper > 0 and Summary.NameKey(peer) == key then
-                local owed = terms.creditor == overview.localName
-                local block = result[owed and "owed" or "owe"]
-                block.money, problem = add(block.money, balance.remainingCopper)
-                if not block.money then return nil, problem end
-                matches = matches + 1
+            if acknowledged and balance.remainingCopper > 0 and Summary.NameKey(peer) == key and not links[offer.offerId] then
+                local direction=terms.creditor==overview.localName and "owed" or "owe"
+                local block=result[direction]
+                local asset=codec.Asset(terms)
+                if asset.kind=="money" then
+                    block.money,problem=add(block.money,balance.remainingCopper)
+                    if not block.money then return nil,problem end
+                else
+                    local row=grouped[direction][asset.itemKey]
+                    if not row then
+                        row={label=asset.label,quantity=0,itemKey=asset.itemKey,itemID=asset.itemID}
+                        grouped[direction][asset.itemKey]=row
+                        block.items[#block.items+1]=row
+                    end
+                    if asset.label<row.label then row.label=asset.label end
+                    row.quantity,problem=add(row.quantity,balance.remainingCopper)
+                    if not row.quantity then return nil,problem end
+                end
+                matches=matches+1
             end
         end
     end
+    labels(result.owed.items); labels(result.owe.items)
     return result, matches
 end
 
@@ -158,7 +230,7 @@ function Summary.Build(db, overview, exactPlayerName)
     if not personalResult then return nil, count end
     local result = {player=display, personal=personalResult, shared=source(), count=count}
     if overview ~= nil then
-        local safe, sharedResult, sharedCount = pcall(shared, overview, key)
+        local safe, sharedResult, sharedCount = pcall(shared, overview, key, Summary.LinkedEntries(db,overview))
         if safe and sharedResult then
             result.shared = sharedResult
             result.count = result.count + sharedCount

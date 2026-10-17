@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0 — 2026-10-17
+
+- Integrated optional sharing into ordinary gold and item IOUs. New loans require recipient acceptance; accepted records link to the personal ledger and reminders avoid counting a linked copy twice. Existing Shared records remain available, with deliberate Add to ledger for older confirmed records.
+- Added background request delivery and bounded retries, retaining exact saved consent across reload and interruption. Closing a window no longer creates a connection chore. Unaccepted background invitations use a bounded, expiring session inbox instead of consuming permanent history capacity.
+- Added item Shared terms, payment/correction quantities, and compact Requests review. Essential player, direction, balance, and note stay visible; technical details, history, and connection controls remain secondary.
+- Added bag item selection, known full-stack quantities, and material bundles of up to 12 items. Activity Track all creates loans deliberately from the remaining unassigned contents of a transfer. Gifts and purchases still never become loans automatically.
+- Kept successful outgoing mail repayments immediate in the sender's personal ledger. Observed repayments can exchange Shared synchronization hints and acknowledged events; uncertain matches or conflicting state still need review. Undo retains original payment history.
+- Preserved existing personal/Shared records and export formats, and retained manual exceptions and optional backups under More/Options.
+
+Validation: expanded Lua 5.1 domain, UI, two-client, transient inbox, crafting, trade/mail, and regression checks plus publishing/package validation. **Live testing of 0.7 onward remains deferred; no new in-game success is claimed. Fully restart WoW after updating because 1.0.0 adds addon files.** Published through the regular Release channel.
+
 ## 0.9.0 — 2026-10-17
 
 - Added matching personal repayments from successfully sent mail. The sender's ledger updates on send success without waiting for collection or peer acknowledgment; postage and COD are excluded.

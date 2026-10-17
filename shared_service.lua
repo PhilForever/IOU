@@ -3,7 +3,12 @@ local V = {}
 IOU.SharedService = V
 local S, C, P = IOU.Shared, IOU.SharedCodec, IOU.SharedPayments
 local entry, character, localName, failure, notice, peer, notifying, needsPause, handlingWireChange
+local background=false
 local MAX_COUNTER, MAX_TIME = 2147483647, 4102444800
+-- Unaccepted background invitations never consume permanent consent/history
+-- capacity. Only an explicit Accept promotes one into the saved store.
+local inbox, inboxSerial = {},0
+local INBOX_MAX, INBOX_PEER_MAX, INBOX_TTL = 16,12,300
 
 local function plain(value)
     if type(issecretvalue) ~= "function" then return true end
@@ -34,6 +39,16 @@ local function now()
     if not ok or not integer(value, MAX_TIME) then return nil, "The client clock is unavailable." end
     return value
 end
+local function inboxClock()
+    if type(GetTime)~="function" then return nil end
+    local ok,value=pcall(GetTime)
+    if ok and plain(value) and type(value)=="number" and value==value and value>=0 and value<math.huge then return value end
+end
+local function expireInbox()
+    local stamp=inboxClock()
+    if not stamp then inbox={} return end
+    for id,row in pairs(inbox) do if stamp>=row.expires then inbox[id]=nil end end
+end
 local function changed()
     if notifying then return end
     notifying = true
@@ -49,9 +64,10 @@ local function wireCall(name, ...)
     return result, err
 end
 local function stopWire()
-    if peer then needsPause = true end
+    if peer or background then needsPause = true end
     -- Clear the session identity before Disable invokes its refresh callback.
-    peer = nil
+    peer,background = nil,false
+    inbox={}
     local w = wire()
     if type(w) == "table" and type(w.Disable) == "function" then pcall(w.Disable) end
 end
@@ -214,8 +230,9 @@ local function current()
 end
 function V.IsEnabled()
     local w = wire()
-    return peer ~= nil and type(w) == "table" and type(w.IsEnabled) == "function" and w.IsEnabled() == true
+    return (peer ~= nil or background) and type(w) == "table" and type(w.IsEnabled) == "function" and w.IsEnabled() == true
 end
+function V.IsBackground() return background and V.IsEnabled() end
 function V.GetPeer() return V.IsEnabled() and peer or nil end
 local function enabled()
     local value, err = current()
@@ -245,6 +262,17 @@ local function offerSnapshot(value, id)
     if closed then offer.localClosed, offer.localClosedAt, offer.localCloseReason = true, closed.at, closed.reason end
     return offer
 end
+local function inboxSnapshot(id)
+    expireInbox()
+    local row=inbox[id]
+    return row and clone(row.store.offers[id]) or nil
+end
+local function appendInbox(offers,value)
+    expireInbox()
+    for id,row in pairs(inbox) do
+        if not value.store.offers[id] then offers[#offers+1]=clone(row.store.offers[id]) end
+    end
+end
 function V.GetStore()
     local value, err = current()
     if not value then return nil, err end
@@ -253,7 +281,10 @@ end
 function V.GetOffer(id)
     local value, err = current()
     if not value then return nil, err end
-    return offerSnapshot(value, id)
+    if value.store.offers[id] then return offerSnapshot(value,id) end
+    local transient=inboxSnapshot(id)
+    if transient then return transient end
+    return nil,"Unknown shared offer."
 end
 function V.GetBalance(id)
     local value, err = current()
@@ -265,6 +296,7 @@ function V.List()
     if not value then return nil, err end
     local offers = {}
     for id in pairs(value.store.offers) do offers[#offers+1] = offerSnapshot(value, id) end
+    appendInbox(offers,value)
     table.sort(offers, function(a,b)
         if a.createdAt ~= b.createdAt then return a.createdAt > b.createdAt end
         return a.offerId < b.offerId
@@ -276,11 +308,16 @@ function V.GetOverview()
     if not value then return nil,err end
     local offers={}
     for id in pairs(value.store.offers) do offers[#offers+1]=offerSnapshot(value,id) end
+    appendInbox(offers,value)
     table.sort(offers,function(a,b)
         if a.createdAt ~= b.createdAt then return a.createdAt > b.createdAt end
         return a.offerId < b.offerId
     end)
-    return {offers=offers,balances=clone(views),localName=localName,peer=V.GetPeer()}
+    local result={offers=offers,balances=clone(views),localName=localName,peer=V.GetPeer()}
+    if IOU.Sharing and type(IOU.Sharing.GetLinks)=="function" then
+        result.links=IOU.Sharing.GetLinks();result.linkBases=IOU.Sharing.GetLinkBases()
+    end
+    return result
 end
 function V.GetStatus()
     if failure then return failure end
@@ -292,6 +329,7 @@ function V.GetStatus()
     if notice then return notice end
     if not entry then return "Shared agreements have not been opened." end
     if not V.IsEnabled() then return "Sharing is off. Pending offers are paused when sharing stops." end
+    if background then return "Requests are ready. New IOUs need acceptance." end
     local w = wire()
     return "Sharing with " .. peer .. ". " .. (type(w.GetStatus) == "function" and w.GetStatus() or "")
 end
@@ -315,16 +353,84 @@ local function apply(candidate, outgoing, id)
     changed()
     return id and offerSnapshot(entry, id) or true
 end
+local function transientApply(id,updated,outgoing)
+    local row=inbox[id]
+    if not row then return reject("This request expired. Ask the other player to send it again.") end
+    local valid,problem=S.Validate(updated)
+    if not valid then return reject(problem) end
+    local ok,err=wireCall("CanQueue",outgoing)
+    if not ok then return reject(err or "The shared message queue is full; nothing was changed.") end
+    row.store=updated
+    ok,err=wireCall("Send",outgoing)
+    local offer=clone(updated.offers[id])
+    if not ok then
+        reject("Your decision was retained for this session, but delivery could not be queued. Use Retry. "..tostring(err or ""))
+        return nil,notice,offer
+    end
+    notice=nil;changed();return offer
+end
+local function stageInvitation(sender,message,stamp)
+    expireInbox()
+    local row=inbox[message.offerId]
+    if row then
+        local original=row.message
+        if row.sender~=sender or original.agreementId~=message.agreementId
+            or original.terms~=message.terms or original.revision~=message.revision then
+            return reject("A request identifier was reused with different terms.")
+        end
+        -- Use the engine for semantic replay validation, including duplicate
+        -- proposal IDs. It can replay a retained Decline without new consent.
+        local updated,outgoing=S.Receive(row.store,sender,message,stamp)
+        if not updated then return reject(outgoing) end
+        return transientApply(message.offerId,updated,outgoing)
+    end
+    local clock=inboxClock()
+    if not clock then return reject("The client clock is unavailable.") end
+    local total,fromPeer=0,0
+    for _,item in pairs(inbox) do total=total+1;if item.sender==sender then fromPeer=fromPeer+1 end end
+    if total>=INBOX_MAX then return reject("The request inbox is full. Unaccepted requests expire after five minutes.") end
+    if fromPeer>=INBOX_PEER_MAX then return reject("This player's request inbox is full (12 requests).") end
+    local store,problem=S.New(localName)
+    if not store then return reject(problem) end
+    local updated,outgoing=S.Receive(store,sender,message,stamp)
+    if not updated then return reject(outgoing) end
+    -- The first original proposal has no response and no local consent.
+    if #outgoing~=0 then return reject("An invitation unexpectedly generated a response.") end
+    inboxSerial=inboxSerial+1
+    inbox[message.offerId]={sender=sender,message=clone(message),store=updated,expires=clock+INBOX_TTL,serial=inboxSerial}
+    notice=nil;changed();return clone(updated.offers[message.offerId])
+end
 local function receive(sender, message)
     local value, err = enabled()
     if not value then return nil, err end
-    if not plain(sender) or type(sender) ~= "string" or sender ~= peer then return reject("The observed sender does not exactly match the enabled player.") end
+    if not plain(sender) or type(sender) ~= "string" or (not background and sender ~= peer)
+        or sender==localName or not peerName(sender) then return reject("The observed sender does not exactly match the enabled player.") end
     local ok, problem = C.ValidateMessage(message)
     if not ok then return reject(problem) end
     if value.closedPaused[message.offerId] then return reject("A delayed message for a locally closed paused offer was rejected.") end
+    if message.kind=="SYNC" then
+        local coordinator=IOU.Sharing
+        if not background or not coordinator or type(coordinator.ReceiveHint)~="function" then
+            return reject("Shared synchronization is unavailable.")
+        end
+        return coordinator.ReceiveHint(sender,message)
+    end
+    local stamp
+    stamp, err = now()
+    if not stamp then return reject(err) end
+    expireInbox()
+    local transient=inbox[message.offerId]
+    if background and not value.store.offers[message.offerId] and transient and message.kind~="PROPOSE" then
+        if transient.sender~=sender then return reject("This request belongs to another player.") end
+        if message.kind~="WITHDRAW" and message.kind~="OUTCOME" then return reject("Accept this request before receiving a commitment.") end
+        local updated,outgoing=S.Receive(transient.store,sender,message,stamp)
+        if not updated then return reject(outgoing) end
+        return transientApply(message.offerId,updated,outgoing)
+    end
     if message.kind == "PROPOSE" and not value.store.offers[message.offerId] then
         local terms = C.ParseTerms(message.terms)
-        if terms.kind == "GOLD_OBLIGATION" and unresolved(value, sender) then return reject("Review the unresolved paused offer with this player before receiving a replacement.") end
+        if C.IsObligation(terms) and unresolved(value, sender) then return reject("Review the unresolved paused offer with this player before receiving a replacement.") end
+        if background and C.IsObligation(terms) then return stageInvitation(sender,message,stamp) end
         local count = 0
         for id, offer in pairs(value.store.offers) do
             if offer.role == "recipient" and offerPeer(offer) == sender and not value.closedPaused[id]
@@ -332,14 +438,29 @@ local function receive(sender, message)
         end
         if count >= 4 then return reject("This player's pending proposal inbox is full (4 offers).") end
     end
-    local stamp
-    stamp, err = now()
-    if not stamp then return reject(err) end
     local updated, outgoing = S.Receive(value.store, sender, message, stamp)
     if not updated then return reject(outgoing) end
     local candidate = clone(value)
     candidate.store = updated
     return apply(candidate, outgoing, message.offerId)
+end
+
+function V.EnableBackground()
+    local value,err=current(); if not value then return nil,err end
+    local pending,problem=V.IsRecoveryPending()
+    if pending then return nil,problem or "Review the saved recovery first." end
+    if V.IsBackground() then return true end
+    if needsPause then local ok; ok,err=pauseLoaded(); if not ok then return nil,err end end
+    local ok; ok,err=wireCall("EnableBackground",receive)
+    if not ok then return nil,err end
+    background,notice=true,nil
+    changed(); return true
+end
+function V.SelectPeer(other)
+    local value,err=enabled(); if not value then return nil,err end
+    local target,problem=peerName(other); if not target then return nil,problem end
+    if not background then return V.Enable(target) end
+    peer=target; changed(); return true
 end
 
 function V.Enable(other)
@@ -366,7 +487,7 @@ function V.Enable(other)
     local ok
     ok, err = w.Enable(target, receive)
     if not ok then return reject(err) end
-    peer, notice = target, nil
+    peer, notice, background = target, nil, false
     changed()
     return true
 end
@@ -398,16 +519,21 @@ function V.Propose(fields)
     local value, err = enabled()
     if not value then return nil, err end
     if not tablePlain(fields) then return reject("Enter the proposal fields.") end
-    local allowed = {peer=true, direction=true, amountCopper=true, note=true, dueUTC=true}
+    local allowed = {peer=true, direction=true, amountCopper=true, note=true, dueUTC=true,kind=true,itemKey=true,itemName=true}
     for key in pairs(fields) do if not allowed[key] then return reject("Unknown shared proposal field.") end end
-    if fields.peer ~= peer then return reject("The proposal player does not exactly match the enabled player.") end
+    local target=background and peerName(fields.peer) or peer
+    if not target or fields.peer ~= target then return reject("The proposal player does not exactly match the enabled player.") end
     if fields.direction ~= "owed" and fields.direction ~= "owe" then return reject("Choose who owes the gold.") end
-    if unresolved(value, peer) then return reject("Review and close the unresolved paused offer with this player before creating a replacement.") end
-    local terms = {protocol=1, kind="GOLD_OBLIGATION", proposer=localName, recipient=peer,
-        debtor=fields.direction == "owed" and peer or localName,
-        creditor=fields.direction == "owed" and localName or peer,
+    if unresolved(value, target) then return reject("Review and close the unresolved paused offer with this player before creating a replacement.") end
+    if fields.kind~=nil and fields.kind~="money" and fields.kind~="item" then return reject("Only gold and items can be shared.") end
+    local item=fields.kind=="item"
+    if not item and (fields.itemKey~=nil or fields.itemName~=nil) then return reject("Gold cannot include an item identity.") end
+    local terms = {protocol=item and 3 or 1, kind=item and "ITEM_OBLIGATION" or "GOLD_OBLIGATION", proposer=localName, recipient=target,
+        debtor=fields.direction == "owed" and target or localName,
+        creditor=fields.direction == "owed" and localName or target,
         amountCopper=fields.amountCopper, dueUTC=fields.dueUTC == nil and 0 or fields.dueUTC,
         note=fields.note == nil and "" or fields.note}
+    if item then terms.itemKey,terms.itemName=fields.itemKey,fields.itemName end
     local ok, problem = C.ValidateTerms(terms)
     if not ok then return reject(problem) end
     local candidate = clone(value)
@@ -426,7 +552,7 @@ local function proposeEvent(parentId, method, first, second)
     if not value then return nil, err end
     local parent = value.store.offers[parentId]
     if not parent then return reject("Unknown original shared agreement.") end
-    if offerPeer(parent) ~= peer then return reject("Enable sharing with the original agreement's player first.") end
+    if not background and offerPeer(parent) ~= peer then return reject("Enable sharing with the original agreement's player first.") end
     local terms, problem = method(value.store,parentId,first,second,value.closedPaused)
     if not terms then return reject(problem) end
     local candidate = clone(value)
@@ -446,13 +572,56 @@ end
 function V.ProposeCorrection(parentId,paymentId,reason)
     return proposeEvent(parentId,P.BuildCorrection,paymentId,reason)
 end
+function V.SendHint(id,paidAmount)
+    local value,err=enabled();if not value then return nil,err end
+    local offer=value.store.offers[id]
+    local terms=offer and C.ParseTerms(offer.terms)
+    local view=offer and P.View(value.store,id,value.closedPaused)
+    if not background or not offer or offer.role~="recipient" or offer.state~="COMMITTED"
+        or value.closedPaused[id] or not C.IsObligation(terms) or not view or not view.confirmed
+        or not integer(paidAmount,terms.amountCopper) then return nil,"Choose an agreed shared IOU." end
+    -- This carries no consent and cannot change either ledger. The original
+    -- proposer must still offer the exact payment/correction through the normal
+    -- commitment protocol; its recipient verifies local evidence or reviews it.
+    local message={version=1,kind="SYNC",revision=1,agreementId=offer.agreementId,offerId=id,
+        messageId="h-"..value.nonce.."-"..value.store.serial.."-"..paidAmount,
+        terms=offer.terms,paidAmount=paidAmount,baseRevision=view.baseRevision,baseChain=view.baseChain}
+    local valid,problem=C.ValidateMessage(message);if not valid then return nil,problem end
+    local actions={{target=terms.proposer,message=message}}
+    local ok;ok,err=wireCall("CanQueue",actions);if not ok then return nil,err end
+    return wireCall("Send",actions)
+end
 local function mutate(method, id)
     local value, err = enabled()
     if not value then return nil, err end
+    expireInbox()
+    local invitation=inbox[id]
+    if background and not value.store.offers[id] and invitation then
+        local stamp;stamp,err=now()
+        if not stamp then return reject(err) end
+        if method==S.Accept then
+            local pending=invitation.store.offers[id]
+            if pending.state~="OFFER_RECEIVED" or pending.consent~="NONE" then return reject("Only an undecided request can be accepted.") end
+            -- Reconstruct the original arrival and local Accept in one staged
+            -- candidate. Neither the request nor consent is saved on failure.
+            local updated,outgoing=S.Receive(value.store,invitation.sender,invitation.message,pending.createdAt)
+            if not updated then return reject(outgoing) end
+            updated,outgoing=S.Accept(updated,id,stamp)
+            if not updated then return reject(outgoing) end
+            local candidate=clone(value);candidate.store=updated
+            local result,problem,saved=apply(candidate,outgoing,id)
+            if entry.store.offers[id] then inbox[id]=nil end
+            return result,problem,saved
+        end
+        if method~=S.Decline and method~=S.Retry then return reject("Only Accept or Decline is available for this request.") end
+        local updated,outgoing=method(invitation.store,id,stamp)
+        if not updated then return reject(outgoing) end
+        return transientApply(id,updated,outgoing)
+    end
     local offer = value.store.offers[id]
     if not offer then return reject("Unknown shared offer.") end
     if value.closedPaused[id] then return reject("This paused offer was closed locally; its evidence was retained.") end
-    if offerPeer(offer) ~= peer then return reject("Enable sharing with this offer's player first.") end
+    if not background and offerPeer(offer) ~= peer then return reject("Enable sharing with this offer's player first.") end
     local stamp
     stamp, err = now()
     if not stamp then return reject(err) end
@@ -466,6 +635,7 @@ function V.Accept(id) return mutate(S.Accept,id) end
 function V.Decline(id) return mutate(S.Decline,id) end
 function V.Withdraw(id) return mutate(S.Withdraw,id) end
 function V.Retry(id) return mutate(S.Retry,id) end
+function V.Resume(id) return mutate(S.Resume,id) end
 function V.ClosePaused(id, reason)
     local value, err = current()
     if not value then return nil, err end
@@ -611,7 +781,7 @@ local function buildPreview(value, imported, stamp, currentViews, backupViews)
     local unresolvedPeers={}
     for id,offer in pairs(value.store.offers) do
         local terms=C.ParseTerms(offer.terms)
-        if terms.kind == "GOLD_OBLIGATION" and (offer.state == "OFFER_OPEN" or offer.state == "OFFER_RECEIVED"
+        if C.IsObligation(terms) and (offer.state == "OFFER_OPEN" or offer.state == "OFFER_RECEIVED"
             or offer.state == "ACCEPT_PENDING" or offer.state == "DECLINE_PENDING"
             or offer.state == "PAUSED" and not value.closedPaused[id]) then
             unresolvedPeers[offerPeer(offer)]=true
@@ -626,7 +796,7 @@ local function buildPreview(value, imported, stamp, currentViews, backupViews)
             classification="missing"; result.missing=result.missing+1
             candidate.store.offers[id]=clone(offer)
             local terms=C.ParseTerms(offer.terms)
-            if terms.kind == "GOLD_OBLIGATION" and unresolvedPeers[offerPeer(offer)] then
+            if C.IsObligation(terms) and unresolvedPeers[offerPeer(offer)] then
                 parallelConflict="Review the current unfinished agreement with " .. offerPeer(offer)
                     .. " before adding another original agreement from a backup."
             end
@@ -835,9 +1005,9 @@ IOU.OnSharedWireChanged = function()
     if handlingWireChange then return end
     handlingWireChange = true
     local w = wire()
-    if peer and type(w) == "table" and type(w.IsEnabled) == "function" and not w.IsEnabled() then
+    if (peer or background) and type(w) == "table" and type(w.IsEnabled) == "function" and not w.IsEnabled() then
         local detail = type(w.GetStatus) == "function" and w.GetStatus() or "Shared communication stopped unexpectedly."
-        peer, needsPause = nil, true
+        peer, background, needsPause = nil, false, true
         local ok, err = pauseLoaded()
         notice = detail .. (ok and " Unfinished offers were paused." or " Recovery is pending: " .. tostring(err))
     end

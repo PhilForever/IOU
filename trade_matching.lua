@@ -33,8 +33,8 @@ end
 
 -- Match the complete item payload, never its displayed colour or localized
 -- name. Empty numeric fields and trailing zero fields are equivalent. Keep
--- every populated field: enchantments, suffixes and bonus variants must not
--- silently repay one another. A near match is offered for explicit review.
+-- every populated field in stored keys. Comparison below can ignore known
+-- display context without rewriting old receipt or accepted Shared identities.
 local function itemIdentity(value)
     if not text(value, 512) then return nil end
     if value:sub(1, 2) == "|c" then
@@ -56,7 +56,26 @@ local function itemIdentity(value)
     while #fields > 1 and fields[#fields] == 0 do fields[#fields] = nil end
     local canonical = {}
     for index, field in ipairs(fields) do canonical[index] = string.format("%.0f", field) end
-    return "item:" .. table.concat(canonical, ":"), fields[1]
+    return "item:" .. table.concat(canonical, ":"), fields[1], fields
+end
+local function equivalentItems(left,right)
+    local a,aid,af=itemIdentity(left)
+    local b,bid,bf=itemIdentity(right)
+    if not a or not b or aid~=bid then return false end
+    -- Native item-string documentation names payload positions 9 and 10
+    -- linkLevel and specializationID. These describe the link's viewer.
+    -- Keep enchant/gems/suffix/uniqueID/upgrade/difficulty/bonus and every
+    -- remaining field exact. Never normalize these bytes in saved evidence.
+    -- Reference: build 70450 Blizzard_PTRFeedback/Blizzard_Reports.lua.
+    for index=1,math.max(#af,#bf) do
+        if index~=9 and index~=10 and (af[index] or 0)~=(bf[index] or 0) then return false end
+    end
+    return true
+end
+
+function Matching.EquivalentItems(left,right)
+    local ok,result=pcall(equivalentItems,left,right)
+    return ok and result==true
 end
 
 local function asset(row, amount)
@@ -145,17 +164,20 @@ local function makePlan(db, overview, transfer)
         end
     end
     local shared = {owed={}, owe={}}
+    local links=Summary.LinkedEntries(db,overview)
     if overview ~= nil and not summary.sharedError then
         for _, offer in ipairs(overview.offers) do
             local terms = Codec.ParseTerms(offer.terms)
             local balance = overview.balances[offer.offerId]
-            if terms.kind == "GOLD_OBLIGATION" and offer.state == "COMMITTED"
+            if Codec.IsObligation(terms) and offer.state == "COMMITTED"
                 and balance and balance.confirmed and balance.remainingCopper > 0 then
                 local peer = offer.role == "proposer" and terms.recipient or terms.proposer
                 if Summary.NameKey(peer) == peerKey then
                     local direction = terms.creditor == overview.localName and "owed" or "owe"
+                    local asset=Codec.Asset(terms)
                     shared[direction][#shared[direction]+1] = {source="shared", offerID=offer.offerId,
-                        balance=balance.remainingCopper, label="Gold"}
+                        balance=balance.remainingCopper,label=asset.label,kind=asset.kind,
+                        itemKey=asset.itemKey,itemID=asset.itemID,linkedEntryID=links[offer.offerId]}
                 end
             end
         end
@@ -169,7 +191,7 @@ local function makePlan(db, overview, transfer)
                 local match = row.asset == "money" and entry.kind == "money"
                 if row.asset == "item" and entry.kind == "item" then
                     if entry.itemKey then
-                        match = entry.itemKey == row.itemKey
+                        match = equivalentItems(entry.itemKey,row.itemKey)
                         if not match and entry.itemID == row.itemID then near[#near+1] = entry end
                     elseif not entry.label:find("|", 1, true) and row.names[entry.label] then
                         match = true
@@ -178,17 +200,25 @@ local function makePlan(db, overview, transfer)
                 end
                 if match then candidates[#candidates+1] = entry; personalCount = personalCount + 1 end
             end
-            if row.asset == "money" then
-                for _, entry in ipairs(shared[row.direction]) do
-                    candidates[#candidates+1] = entry; sharedCount = sharedCount + 1
+            for _,entry in ipairs(shared[row.direction]) do
+                local match=row.asset==entry.kind and (row.asset=="money" or equivalentItems(row.itemKey,entry.itemKey))
+                local nearMatch=row.asset=="item" and entry.kind=="item" and row.itemID==entry.itemID and not match
+                local linked=false
+                if match and entry.linkedEntryID then
+                    for _,candidate in ipairs(candidates) do
+                        if candidate.source=="personal" and candidate.entryID==entry.linkedEntryID then linked=true end
+                    end
                 end
+                if match and not linked then
+                    candidates[#candidates+1]=entry; sharedCount=sharedCount+1
+                elseif nearMatch then near[#near+1]=entry end
             end
             -- An item with the same ID but a different populated payload needs
             -- review even if a second, generic note would otherwise match.
             for _, entry in ipairs(near) do candidates[#candidates+1] = entry end
             table.sort(candidates, candidateOrder)
             local reason
-            local unknownShared = row.asset == "money" and summary.sharedError
+            local unknownShared = summary.sharedError
             local relevant = #candidates > 0 or unknownShared
             -- An ordinary purchase, barter, or enchant fee is quiet activity
             -- when it has no relation to an existing IOU. Review only protects

@@ -1,160 +1,54 @@
-# Shared Agreements development
+# Shared IOU development — 1.0
 
-Version **0.7.0** simplifies the existing views: Requests stays accessible, normal details show essential balances and terms, and History, technical Details, and secondary actions are expandable. This release changes presentation only; it does not automate repayments or alter stored financial records or consent. The read-only player/trade reminders and window-independent Shared session introduced in 0.6.0 are retained. Explicit disconnect, logout/reload, recovery gates, and transport failure keep the existing stop/pause behavior.
+Shared gold and item agreements use immutable terms and the retained PROPOSE/ACCEPT/COMMIT/ACK state machine. The 1.0 coordinator links accepted agreements to ordinary personal IOUs, observes personal repayment changes, and handles background delivery. Original loans always require local recipient acceptance.
 
-The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps. Displaying a reminder, opening a trade, targeting a player, and closing a decision review never mutate a balance or accept Shared terms.
+The pure codec, engine, and payment modules perform no network, UI, saved-data, or clock access. Callers provide timestamps. The service validates and stages records; the coordinator connects them to the existing personal ledger. See the [protocol](shared-agreements-protocol.md), [player guide](shared-agreements.md), and [testing guide](manual-testing.md).
 
-The personal ledger remains separate. See the [player guide](shared-agreements.md), [protocol specification](shared-agreements-protocol.md), and [roadmap](roadmap.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement. The user reported successful backup checks on 0.5.0, and confirmed in-game that personal and Shared debts appear in trade reminders and player tooltips on 0.6.0. The revised 0.7.0 layout remains pending live use.
+## Modules and boundaries
 
-## State API
-
-| Function | Result |
+| Module | Responsibility |
 | --- | --- |
-| `Shared.New(localName)` | New empty store, or `nil, error`. |
-| `Shared.Validate(store)` | `true`, or `nil, error`. Does not modify the store. |
-| `Shared.Propose(store, terms, agreementId, offerId, now)` | Record the local proposer's explicit offer. |
-| `Shared.Receive(store, sender, message, now)` | Validate and process an exact peer's logical message. |
-| `Shared.Accept(store, offerId, now)` | Record the recipient's explicit consent to the retained terms. |
-| `Shared.Decline(store, offerId, now)` | Decline a received offer before accepting. |
-| `Shared.Withdraw(store, offerId, now)` | Withdraw a local proposal before commitment. |
-| `Shared.Pause(store, now)` | Pause all uncommitted handshakes; retain committed and terminal records. |
-| `Shared.Retry(store, offerId, now)` | Return the retained response without inventing a new consent or message ID. |
-| `Shared.Snapshot(store[, offerId])` | Independent copy of the whole store or one offer, or `nil, error`. |
+| `shared_codec.lua` | Strict canonical gold/item terms, financial chains, logical messages, and synchronization hints. |
+| `shared.lua` | Pure consent state transitions, retained responses, duplicate handling, Pause/Resume, and snapshots. |
+| `shared_payments.lua` | Exact original/commit/chain binding, derived balances, payment and full-reversal construction. |
+| `shared_wire.lua` | Printable UTF-8 framing, logged WHISPER transport, bounded queues/reassembly/rate limits. |
+| `shared_service.lua` | Character storage, staged mutation, transient background invitations, queue-before-commit preflight, recovery gates. |
+| `sharing.lua` | Personal links, deliberate legacy adoption, observed repayments, exact-baseline hints, bounded delivery retries. |
+| `shared_view.lua` | Detached projection for compact Requests; presentation never grants consent. |
 
-Every mutation returns **`newStore, actions`** on success, or **`nil, error`** on rejection. It leaves the input store untouched in either case. Actions form an array of `{target=fullName, message=logicalMessage}`; an empty array is valid. Actions and received messages do not alias retained records. Callers must replace their store only after success.
+## Pure API
 
-No action is sent automatically. `Receive` must eventually receive the sender established by the client event, rather than a sender asserted inside a payload. This offline API uses exact participant bytes; transport identity normalization is still subject to live evidence.
+`Shared.New(name)` creates an empty store; `Validate` checks it; `Snapshot` returns a detached copy. `Propose`, `Receive`, `Accept`, `Decline`, `Withdraw`, `Pause`, `Resume`, and `Retry` return `newStore, actions` or `nil, error` without modifying the input. Actions are `{target=fullName,message=logicalMessage}`. Callers persist before enqueueing.
 
-Stores hold at most **32 retained offers**. Reaching capacity rejects new work without evicting history. Agreement and offer IDs are caller supplied, 1–64 ASCII letters, digits, underscores, or hyphens, and cannot be reused within a store. Message, acceptance, commit, and outcome IDs use the store's monotonic counter. Received message and semantic IDs are bound to their peer and offer; they are not authentication tokens.
+`Resume` restores only the exact pending state whose terms, role, consent, and messages are already retained. It cannot create an acceptance. `Retry` reuses the retained response. Unknown COMMIT/ACCEPT traffic cannot restore missing consent.
 
-Offer states are `OFFER_OPEN`, `OFFER_RECEIVED`, `ACCEPT_PENDING`, `DECLINE_PENDING`, `COMMITTED`, `DECLINED`, `WITHDRAWN`, and `PAUSED`. Delivery progress is a separate field. An acknowledgment tells the proposer that the recipient processed its commit; it does not establish that money changed hands.
+`SharedCodec.IsObligation`, `IsPayment`, `IsCorrection`, and `Asset(terms)` hide gold/item kind differences. Asset results are `{kind="money"|"item",label,itemKey?,itemID?,amount}`. `CanonicalItem(link)` validates the numeric native item payload; item identity is not inferred from a display name.
 
-The service calls `Pause` on startup and disconnect before allowing shared work to resume. Paused offers cannot automatically retry or accept. Local reviewed-offer tombstones preserve old evidence, and unresolved paused offers block replacements with the same peer. A peer message never restores missing local consent. Shared backups recover only validated evidence from the same exact character's own snapshot.
+`SharedPayments.View/Views` derives acknowledged balances. Legacy `originalCopper`, `paidCopper`, and `remainingCopper` fields remain for compatibility; for item terms these are integer quantities, never copper. Item views also expose amount/asset metadata. UI code must format through the asset kind.
 
-## Codec API
+## Service and coordinator
 
-| Function | Result |
-| --- | --- |
-| `SharedCodec.ValidateTerms(terms)` | `true`, or `nil, error`. |
-| `SharedCodec.CanonicalTerms(terms)` | Exact canonical bytes, or `nil, error`. |
-| `SharedCodec.ParseTerms(bytes)` | Validated terms table, or `nil, error`. |
-| `SharedCodec.ValidateMessage(message)` | `true`, or `nil, error`. |
-| `SharedCodec.Encode(message)` | Logical message bytes, or `nil, error`. |
-| `SharedCodec.Decode(bytes)` | Validated logical message, or `nil, error`. |
+`SharedService` retains existing manual `Enable(peer)` behavior and adds `EnableBackground`, `IsBackground`, `SelectPeer`, and `Resume`. `GetStore` returns saved consent history only. `GetOffer`, `List`, and `GetOverview` also expose unaccepted transient background invitations without pretending they are saved or acknowledged balances.
 
-Terms have exactly `protocol=1`, `kind="GOLD_OBLIGATION"`, `proposer`, `recipient`, `debtor`, `creditor`, `amountCopper`, `dueUTC`, and `note`. The debtor and creditor are the two distinct exact participants. `dueUTC=0` means no deadline; other supported values are UTC Unix timestamps. Names and notes must be valid plain UTF-8. The codec rejects extra fields, control text, malformed UTF-8, fractional money, and noncanonical encodings.
+Background original proposals use a session inbox limited to **16 total, 12 per sender, and 300 seconds**. Exact duplicates keep the same request and do not extend its lifetime. Conflicts cannot replace it. Accept stages original Receive plus explicit Accept in one saved candidate before enqueueing. Queue preflight failure leaves no saved request or consent. An enqueue failure after persistence returns the saved offer for Retry. Temporary Decline/withdraw/outcome previews do not consume permanent history. Unknown financial events cannot enter this invitation inbox.
 
-The readable netstring formats start with `IOUST1:` for terms and `IOUSM1:` for logical messages, using comma-terminated `length:value,` fields. Logical data is bounded to 4096 bytes; names to 96 bytes and notes to 512 bytes. `SharedWire` frames that logical text into separate packets of at most 240 bytes without splitting UTF-8 codepoints.
+The saved Shared wrapper remains `{version=1,store,closedPaused,nonce,counter}` under `IOUDB.sharedByCharacter[character]`. Existing personal schemas and `IOU1`/`IOU2`/`IOUS1` formats remain unchanged. Optional `sharingByCharacter` links bind personal record identity, the original offer/terms, and repayment baselines; they do not rewrite the old Shared graph or create peer consent.
 
-## Wire and service
+`Sharing.Connect(peer)` selects delivery without requiring a second manual setup flow. `PrepareOffer(id)` checks the exact record and prepares its peer before a UI decision. `Share(personalID)` proposes the open balance of an ordinary IOU. New confirmed originals can be linked into the personal ledger once; pre-1.0 records require explicit `Adopt(offerID)` to avoid duplicating old personal notes. Personal imports suspend stale links rather than automatically treating matching numeric IDs as the same history.
 
-`SharedWire.Enable(peer, receiver)` explicitly enables one exact full name; `Disable()` clears pending packets and incomplete transfers. `CanQueue(actions)` validates capacity without sending, and `Send(actions)` only enqueues. A driver sends at most one packet per second through `SendAddonMessageLogged`/`WHISPER` and receives only the matching logged event and prefix `IOU_SHAREDv1`.
+`Sharing.OnPersonalChanged` compares valid linked personal balances with acknowledged Shared balances. The original proposer remains the financial event sequencer. A recipient can send an exact-original/exact-chain SYNC hint about its locally observed state; the hint does not directly mutate a balance or supply acceptance. Compatible observed evidence can complete routine acknowledgment; ambiguous, conflicting, or unsupported corrections remain for review. Successful outgoing mail changes the sender's personal balance independently of Shared acknowledgment.
 
-Version 0.3.1 treats `AreOutgoingAddonChatMessagesRestricted` as diagnostic context, not a blanket veto on the logged API. The flag is not a reliable availability check on Forever; [primary beta test notes](https://github.com/Vikquick/Campkeeper/blob/main/docs/testing/beta-checklist.md) record working addon round trips while it was true. The [70425 API declarations](https://github.com/Gethe/wow-ui-source/blob/b401e0332adfbf0460d319b06d8ea29279a941f1/Interface/AddOns/Blizzard_APIDocumentationGenerated/ChatInfoDocumentation.lua) describe the ordinary logged API separately from tournament-only commentator messaging. IOU keeps `InChatMessagingLockdown` and actual native return/error enforcement, without a fallback API. Those sources do not establish logged-whisper delivery on this build; exact peer echoes remain required evidence. Diagnostic reports capture both flags and failed explicit attempts without registering or sending from `GetReport`.
+## Limits and recovery
 
-Packets have readable `SW1 <transferId> <part>/<count> <totalBytes>:<text>` headers. Parts use two-digit indices. Limits are 32 parts per 4096-byte logical message, 8 incomplete plus 8 cached transfers, 32 KiB receive storage, a 45-second expiry, and 32 logical/128 packet outbound capacity. Incoming exact-peer traffic passes a 120-token bucket with two tokens replenished per second. Conflicting fragments are rejected; no partial message reaches the engine. There are no automatic retries.
+- Permanent engine capacity: **128 offers**, including originals and financial events. Existing history is never silently evicted.
+- Canonical logical message: **4096 bytes**; names **96 bytes**, notes **512 bytes**, identifiers **64 ASCII bytes**, financial chain **31 rows**. Complete handshake size can impose an earlier limit; terms are never truncated.
+- Native packet budget: **240 UTF-8 bytes**; at most **32 parts** per logical message.
+- Outbox: **32 logical messages / 128 packets**, paced at one packet per second.
+- Receive assemblies: bounded per sender and across background senders, **45-second expiry**, with a **120-token bucket / two tokens per second** before parsing. Exact event sender and channel establish the peer, not a payload assertion.
+- Coordinator delivery retries are bounded and reuse retained IDs/terms. Timeouts never mean paid, declined, or accepted.
 
-`SharedService` provides `Initialize`, `Enable(peer)`, `Disable`, `IsEnabled`, `GetPeer`, `GetStatus`, `List`, `GetOffer`, `GetStore`, `Propose`, `Accept`, `Decline`, `Withdraw`, `Retry`, and `ClosePaused`. Propose fields are `{peer, direction="owed"|"owe", amountCopper, dueUTC, note}`. Mutations return a detached offer snapshot or `nil,error`. An unexpected failure after saving also returns the saved offer as a third result; callers must offer Retry instead of creating another proposal.
+Staged Shared recovery stops messaging and keeps a persistent review gate. Only the same character's own validated snapshot can supply retained local evidence. Restore adds compatible missing history; it does not overwrite conflicting records, remove current history, or invent missing consent. Backups and diagnostics remain advanced tools, not ordinary-use prerequisites.
 
-The per-character wrapper is `{version=1, store, closedPaused, nonce, counter}` under `IOUDB.sharedByCharacter[IOU.Character()]`. The existing personal key stays unchanged. Exact owner, schema, bounded timestamps, counters, engine evidence, and local review markers are validated before use. Queue capacity is checked before replacing the stored candidate; local consent is saved in memory before packets are enqueued. Native send errors cannot erase that consent.
+## Evidence
 
-Only one peer is enabled per session; receiving a proposal never accepts it or opens a popup. The inbox permits at most four unreviewed proposals from the peer and 32 retained offers overall. Startup never enables the wire or replays a queue. Unexpected transport stops require paused recovery before reconnecting. If the wall clock is temporarily unusable, recovery stays blocked until a valid timestamp is available; no history time or consent is invented.
-
-## Small simulation
-
-This example assumes the addon modules have been loaded into the same `IOU` namespace. The test harness creates isolated namespaces and does not require WoW.
-
-```lua
-local S = IOU.Shared
-local a = assert(S.New("Ada Ash"))
-local b = assert(S.New("Ben Birch"))
-local terms = {
-    protocol=1, kind="GOLD_OBLIGATION",
-    proposer="Ada Ash", recipient="Ben Birch",
-    debtor="Ben Birch", creditor="Ada Ash",
-    amountCopper=250000, dueUTC=0, note="Mount training",
-}
-local function must(store, actionsOrError)
-    assert(store, actionsOrError)
-    return store, actionsOrError
-end
-local actions
-a, actions = must(S.Propose(a, terms, "demo_agreement", "demo_offer", 1))
-b = must(S.Receive(b, "Ada Ash", actions[1].message, 2))
-b, actions = must(S.Accept(b, "demo_offer", 3))
-a, actions = must(S.Receive(a, "Ben Birch", actions[1].message, 4))
-b, actions = must(S.Receive(b, "Ada Ash", actions[1].message, 5))
-a = must(S.Receive(a, "Ben Birch", actions[1].message, 6))
-assert(a.offers.demo_offer.state == "COMMITTED")
-assert(b.offers.demo_offer.state == "COMMITTED")
-```
-
-The returned stores are caller-owned snapshots. Modifying one does not modify an older store, but callers should use the API and `Validate` instead of editing internal consent or history fields.
-
-## Run the simulator
-
-From the repository root, with Python and the development dependency installed:
-
-```sh
-python -m pip install -r requirements-dev.txt
-python tools/test_iou.py
-```
-
-`tools/test_shared.lua` covers the codec and two independent stores, dropped and duplicated messages, reordered terminal outcomes, spoofed roles and senders, changed terms, bounded records, and loss of local consent. It also verifies that the foundation cannot invoke network or game APIs and that input stores remain unchanged on rejection.
-
-Next work should follow the short player workflow: quick gold/item records, readable context reminders, and optional Shared acknowledgment. Broader Shared kinds and peer reconciliation remain future work. Keep live evidence separate from simulations; existing pilots do not establish the new client hooks or all persistence conditions.
-
-## Shared payment domain
-
-`SharedPayments.View(store,parentId,closedPaused)` derives `{originalCopper,paidCopper,remainingCopper,state,events,pendingOfferId,awaitingAck,canPropose,blockReason,baseChain,baseRevision}`. `Validate(store,closedPaused)` validates cross-record financial invariants. `BuildPayment(store,parentId,amount,note,closedPaused)` and `BuildCorrection(store,parentId,paymentId,reason,closedPaused)` build exact protocol-2 terms; they do not mutate stores. The service exposes `GetBalance(parentId)`, `ProposePayment(parentId,amount,note)`, and `ProposeCorrection(parentId,paymentId,reason)` with the same detached-result/third-saved-offer failure contract as `Propose`.
-
-The existing handshake handles payment and correction child offers. Only the original parent proposer initiates them. The parent's commitment and latest event must be acknowledged before the next event. A proposer includes an event only after `PEER_RECEIPT_OBSERVED`; a recipient includes it on `COMMITTED`. Thus a lost ACK deliberately leaves temporary balance asymmetry. Exact duplicate commits and acknowledgments validate their historical prefix and cannot count twice. One unresolved child, including an unreviewed paused child, blocks a successor.
-
-Legacy protocol-1 `GOLD_OBLIGATION` terms remain byte-identical. Protocol-2 `GOLD_PAYMENT`/`GOLD_CORRECTION` terms use `IOUST2:` and append `parentAgreementId,parentOfferId,parentCommitId,parentTerms,baseRevision,baseChain,reversesId` after the existing common term fields. `dueUTC` is zero. `baseChain` uses `IOUSC1:` and flat canonical rows `{kind,agreementId,offerId,commitId,amountCopper,note,reversesId}`; `CanonicalChain`/`ParseChain`/`ValidateChain` expose that codec. Prior terms can be reconstructed exactly from these rows and their prefixes without recursively embedding old terms. Full logical messages remain bounded to 4096 bytes.
-
-Payments must not exceed remaining copper. Corrections target one locally confirmed and unreversed payment and reverse it in full. From 0.3.2, an omitted reason becomes "No reason provided" before canonical terms are built. Stored terms remain nonblank and exact, with no protocol/schema migration. Reversing a correction or the same payment twice is invalid. Capacity checks reserve all handshake envelopes before retention. The service validates the financial graph on load and every staged mutation before persistence. Both peers need a build supporting financial events.
-
-`shared_payment_ui.lua` binds drafts to exact parent terms, peer, and canonical base; correction drafts additionally bind an explicitly selected payment's terms. Review displays the full original terms and exact prior chain. Tests cover this with `test_shared_payment_codec.lua`, `test_shared_payments.lua`, `test_shared_payment_integration.lua`, and mocked UI interactions.
-
-## Shared backup and recovery API
-
-`SharedBackup.Encode(snapshot)` returns `IOUS1:` text and `Decode(text)` returns detached data. `Canonical(snapshot)` exposes the raw canonical typed tree; `ValidateEnvelope(snapshot)` checks only the versioned envelope. The service must additionally validate the exact wrapper, owner/key, bounded timestamps, full consent graph, and financial graph. See [format limits and player recovery](shared-backups.md).
-
-| Service method | Behavior |
-| --- | --- |
-| `ExportBackup()` | Export the current validated Shared wrapper; no traffic. |
-| `PreviewBackup(text)` | Validate this character's snapshot and return record/balance comparisons plus a current fingerprint. No persistence or traffic after normal initialization. |
-| `StageRecovery(text, currentFingerprint)` | Recheck the source/current binding, save both snapshots, disconnect, pause unfinished offers, and persist the recovery gate. |
-| `IsRecoveryPending()` | Check the bounded recovery status shell without decoding large snapshots on the hot path. Invalid shell blocks communication. |
-| `HasRecovery()` | Check whether the latest recovery exists without building a preview; used for button availability. |
-| `GetRecovery()` | Detached latest review, status, preview, exact token, and restore availability. |
-| `ResolveRecovery("restore" or "keep", token)` | Explicitly adopt a valid add-missing union or retain current records. Neither enables/sends. |
-| `ExportRecovery("backup" or "before")` | Copy the imported snapshot or pre-staging records from the latest recovery. |
-
-The optional sidecar is `IOUDB.sharedRecoveryByCharacter[IOU.Character()] = {version=1, owner, character, at, resolvedAt, status, base, backup}`. `base` is a canonical baseline snapshot with export time zero; `backup` preserves the imported timestamp. Status is `PENDING`, `RESTORED`, or `KEPT`. One latest pair is retained per character. Existing version-1 wrappers and personal schema 2 are unchanged.
-
-All current offer IDs win over differing imported versions. Missing offers and exact-evidence missing closure markers may be added; current markers and current-only records survive. Nonce stays local; counters advance to the larger value only for a matching nonce, while store serial always uses the maximum. An imported original is blocked beside an unfinished current original for the same peer until that current offer is reviewed. The complete union must validate atomically before adoption. Unfinished restored offers pause; committed records retain historical evidence but cannot communicate during review. No acceptance is reconstructed from a peer snapshot or from terms without local evidence.
-
-`SharedPayments.Views(store,closedPaused)` validates one whole source and returns all derived original-agreement balances. Recovery compares three sources without repeatedly decoding the entire store for every displayed row. Complexity/byte limits bound the backup parser; expensive snapshot parsing is confined to explicit export/review/recovery actions.
-
-The service reuses derived views only within an operation and caches at most two successfully validated immutable text snapshots, with an 8 MiB combined text-key budget. Cached trees/views stay private and are cloned before adoption or public preview. Current SavedVariables always revalidate; future-date and stale-baseline checks run fresh. No live mutable entry is cached.
-
-## Board presentation and notices
-
-`SharedService.GetOverview()` validates once and returns detached `{offers,balances,localName,peer}`. `balances` reuses the financial views already derived during that validation. `SharedView.Build(overview,filter,search)` is pure and returns rows, global counts, query-matching counts, total, filteredTotal, filter, search, and unfiltered needsReview. Filter keys are `inbox`, `agreements`, `waiting`, `history`, `all`; `DefaultFilter` prefers the first nonempty category in that order. Rows retain exact offers and parsed terms from the detached overview, plus peer, kind, label, direction, event amount, and confirmed original remaining amount.
-
-`IOU.UpdateSharedOverview` runs on login, explicit board opening, and `OnSharedChanged`. It updates passive attention and an existing board without constructing/showing windows. `GetSharedAttention()` returns detached scalar state without reading storage. Search/filter render from the board snapshot, including parent/payment details and action availability; confirmation methods still fetch and validate live records. A visible decision review rechecks when its source/session changes, and again on confirmation. No polling or automatic transport is added.
-
-`IOU.ShowShared(peer,view)` optionally opens a specific view without enabling communication. `SelectSharedOffer(id,problem)` is an explicit UI action used after sending, clears search before binding selection, chooses the offer's category, and reveals its page. Ordinary incoming changes preserve a chosen filter, query, selection, focus, and scroll. An offer that leaves the current category can disappear from that view; its destination count remains visible. Selected-peer enabling binds exact ID, terms, state, and peer, and refuses paused/local-closed offers, active-peer replacement, or pending recovery.
-
-The presentation key `waiting` is retained for compatibility; its player-facing caption is **Sent**. A proposal belongs there on the sender's client and under **Needs review** on the recipient's client. Board closure no longer calls `SharedService.Disable`; it still closes child forms and does not submit them. The main Shared control is attention-only, with ordinary access through Settings and commands. Diagnostic-window closure keeps its independent stop behavior.
-
-## Exact-player reminders
-
-`PlayerSummary.NameKey(name)` normalizes repeated ASCII spaces and ASCII letter case. It rejects control characters, chat markup, oversized names, and secret values. Surnames, hyphens, realm suffixes, and UTF-8 bytes are preserved; there is no substring, first-name, or realm inference.
-
-`PlayerSummary.Build(personalLedger,sharedOverviewOrNil,fullName)` returns `{player,personal,shared,count,sharedError?}`. Each source has separate `owed` and `owe` blocks containing whole-copper `money`, plus sorted `items` and `favors` arrays of `{label,quantity}`. Count is the number of contributing personal records and effective original Shared agreements, not the number of display rows. Identical literal item/favor labels aggregate only within the same source, direction, and kind; different item-link bytes remain separate.
-
-The projection validates the personal ledger and replays each matching record's retained history. Settled/cancelled records contribute nothing. Shared data comes from the detached validated overview: only committed original gold obligations with an effective confirmed balance contribute. Payment/correction child offers never count as separate debts. Pending children leave the existing confirmed parent balance intact. Invalid Shared data returns no partial Shared totals and sets `sharedError`, while a valid personal summary remains usable. Invalid personal data rejects the summary.
-
-The tooltip/trade renderer labels personal and Shared sources separately rather than adding potentially duplicate records. It escapes literal labels before native rendering. Trade events are presentation triggers only; the integration cannot alter offered items/gold, accept trades, or append repayments. Client name APIs and trade hooks require live verification on the target build; unsupported or secret identity values must not produce a guessed match.
+The 0.3.2 live pilot demonstrated exact diagnostic round trips and acknowledged gold payment/correction/settlement. Personal/Shared tooltip and trade reminders were reported working in 0.6.0. **New trade/mail observation, compact 0.7+ presentation, item sharing, and 1.0 background synchronization still need live verification.** Regression simulations establish internal invariants, not native client timing, rendering, or taint behavior.

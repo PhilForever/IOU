@@ -185,7 +185,7 @@ test("player summary bounds the shared offer list and rejects duplicate record i
     local data = overview()
     for index=1,32 do original(data, "offer-" .. index) end
     local value = build(L.New(), data); equal(value.shared.owed.money, 320000); equal(value.count, 32)
-    original(data, "offer-33")
+    for index=33,49 do original(data, "offer-"..index) end
     value = build(L.New(), data); equal(value.shared.owed.money, 0); assert(value.sharedError)
     data = overview(); original(data, "duplicate"); original(data, "duplicate")
     value = build(L.New(), data); equal(value.shared.owed.money, 0); assert(value.sharedError)

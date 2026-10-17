@@ -127,7 +127,7 @@ test("trade matcher matches item payload independently of color display name and
 end)
 
 test("trade matcher preserves populated enchant suffix and extended item fields for review", function()
-    for _, variant in ipairs({":1", "::::::-7", ":::::::::123", "::::::::::::2:101:102"}) do
+    for _, variant in ipairs({":1", "::::::-7", ":::::::::::123", "::::::::::::2:101:102"}) do
         local db=L.New(); add(db,"owed","item",8,link(2589,variant))
         local value=plan(db,transfer(side(0,{item(2589,3)})))
         equal(#value.actions,0); equal(value.pending[1].reason,"item_identity")
@@ -193,11 +193,11 @@ test("trade matcher reviews only matching assets within mixed and service transf
     equal(value.pending[1].reason,"trade_service"); equal(value.unmatched[1].asset,"money")
 end)
 
-test("trade matcher does not silently dismiss mixed or service gold when shared data is unreadable", function()
+test("trade matcher does not silently dismiss mixed or service assets when shared data is unreadable", function()
     local db=L.New(); local data=transfer(side(0,{item()}),side(5000))
     local value=plan(db,data,{})
-    equal(#value.actions,0); equal(#value.pending,1); equal(value.pending[1].asset,"money")
-    equal(value.pending[1].reason,"mixed_trade"); equal(#value.unmatched,1)
+    equal(#value.actions,0); equal(#value.pending,2); equal(#value.unmatched,0)
+    for _,pending in ipairs(value.pending) do equal(pending.reason,"mixed_trade") end
     data=transfer(side(5000)); data.service=true
     value=plan(db,data,{}); equal(#value.pending,1); equal(value.pending[1].reason,"trade_service")
 end)
@@ -240,13 +240,14 @@ test("trade matcher only treats confirmed shared gold in the matching direction 
     value=plan(db,transfer(nil,side(3000)),data); equal(value.pending[1].reason,"shared_confirmation")
 end)
 
-test("trade matcher fails closed for gold when shared data is corrupt but keeps safe item matching", function()
+test("trade matcher fails closed for both gold and items when shared data is corrupt", function()
     local db=L.New(); add(db); add(db,"owed","item",5,"Linen Cloth")
     for _, data in ipairs({false,{},overview()}) do
         if type(data)=="table" and data.offers then shared(data,"broken"); data.balances.broken=nil end
         local value=plan(db,transfer(side(3000,{item()})),data)
-        equal(#value.actions,1); equal(value.actions[1].asset,"item")
-        equal(value.pending[1].reason,"shared_unavailable"); equal(value.pending[1].amount,3000)
+        equal(#value.actions,0); equal(#value.pending,2)
+        for _,pending in ipairs(value.pending) do equal(pending.reason,"shared_unavailable") end
+        equal(value.pending[1].amount,3000); equal(value.pending[2].amount,3)
     end
 end)
 

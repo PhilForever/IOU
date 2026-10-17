@@ -11,7 +11,7 @@ IOU.SharedBackup = B
 -- m<count>:<string key><value>... with keys in byte order. Empty tables use m0:.
 -- Base64 armor preserves every string byte across clipboard line wrapping.
 -- The 8 MiB armored / just-under-6 MiB raw limits allow retained message evidence
--- for all 32 offers. Depth and node limits bound work independently of byte size.
+-- for retained offers. Depth and node limits bound work independently of byte size.
 -- This module validates the envelope and data tree only. SharedService must
 -- validate the full storage wrapper and agreement graph before any restoration.
 local ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

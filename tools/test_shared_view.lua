@@ -229,7 +229,7 @@ test("shared view rejects malformed or foreign overviews instead of showing misl
     offer.role="proposer"; offer.terms="broken"; reject(data)
     local duplicate=overview(); add(duplicate,"a","OFFER_OPEN"); add(duplicate,"a","OFFER_OPEN"); reject(duplicate)
     local hole=overview(); add(hole,"a","OFFER_OPEN"); hole.offers[3]=copy(hole.offers[1]); reject(hole)
-    local capacity=overview(); for index=1,33 do add(capacity,"offer-"..index,"OFFER_OPEN") end; reject(capacity)
+    local capacity=overview(); for index=1,(ns.Shared and ns.Shared.MAX_OFFERS or 32)+17 do add(capacity,"offer-"..index,"OFFER_OPEN") end; reject(capacity)
 end)
 
 return results

@@ -1,81 +1,76 @@
 # IOU
 
-Remember who owes you gold or crafting materials, and what you owe other players. **IOU** is a debt tracker for **WoW: Forever**.
+**Remember who owes you gold or crafting materials, what you owe other players, and what has already been paid back.** IOU is a lightweight debt tracker for **WoW: Forever**.
 
-Target a player, click **+ New IOU**, choose the direction and amount, and save. Hovering that player or opening a trade shows the remaining debt. Your own records work even if the other player does not have IOU.
-
-**0.9.0 tracks repayments through trades and mail.** Matching gold or items reduce the personal IOU, with a quiet notice and **Undo**. **Activity** also offers **Track as IOU** for an unassigned transfer, with the name and amount already filled.
+Create a loan in a few clicks, then play normally. Matching trades and mail keep the remaining balance updated. Player tooltips and trade reminders show what is owed without opening the ledger.
 
 [Download on CurseForge](https://www.curseforge.com/wow/addons/iou) · [GitHub Releases](https://github.com/PhilForever/IOU/releases)
 
+## Features
+
+- **Gold and materials:** Track either direction, partial repayments, item quantities, and optional notes or deadlines.
+- **Automatic repayments:** Completed trades, successfully sent mail, and confirmed mail collections repay clearly matching existing IOUs.
+- **Quick capture:** Activity offers **Track as IOU** and **Track all**, using the recorded player, amounts, and items.
+- **Crafting shortcuts:** Choose items from your bags, use units or full stacks, and enter several materials together.
+- **Optional sharing:** Share an ordinary gold or item IOU. The other player accepts or declines in Requests; routine delivery continues with the windows closed.
+- **History and Undo:** Review an unclear match or undo a repayment without deleting its history.
+
+Personal IOUs work even when the other player does not use IOU. Gifts and purchases never become debts automatically.
+
 ## Get started
 
-1. Install **IOU** through the CurseForge app and open it with `/iou`.
-2. Target a player and click **+ New IOU**. You can also type their full name.
-3. Choose **Owed to me** or **I owe**, then enter gold or an item quantity and name. Notes and a due date are optional.
+1. Open `/iou`, target a player, and click **+ New IOU**.
+2. Choose **Owed to me** or **I owe**, then enter gold or select an item and quantity. Notes and a due date are optional.
+3. Save. Hovering the player or opening a trade shows what remains.
 
-For items, focus the item field and Shift-click an item, or type its name. Favor records also remain available. Each character has a separate ledger.
+For crafting materials, use **Choose from bags** or Shift-click an item into its field. **Use stacks** uses the item's known full stack size; partial stacks can stay in units. **+ Add another item** builds a bundle of up to 12 materials. Each material has its own balance. Favor records and manual exceptions remain available.
 
-Already transferred something? Open **Activity**, select it, and click **Track as IOU**. What you gave becomes an IOU owed to you; what you received becomes an IOU you owe. Choose an asset first if the transfer contained several things.
+Already transferred something? Open **Activity**. Choose an unassigned asset and **Track as IOU**, or use **Track all** for the remaining contents. What you gave becomes an IOU owed to you; what you received becomes an IOU you owe. This is a deliberate loan-creation action.
 
-Hover the player or open a trade to see what remains. Gold in opposite directions is not netted, and item quantities retain their own units. Personal and Shared reminders have separate labels because they may describe the same real debt. **Target IOUs** finds the selected player's records. Tooltip and trade reminders can be disabled in Options.
+## Let repayments look after themselves
 
-## Use the ledger
+A clearly matched transfer reduces an existing personal balance once. Partial repayments leave the remainder open; excess stays unassigned. Opening a trade, accepting a trade that later fails, or reading a mail message never counts as repayment.
 
-- **Owed to me**, **I owe**, and **History** separate open debts from completed or cancelled records. Search and type filters help find a record.
-- Select a record for its remaining amount. Expand its history when you need the previous payments or changes.
-- **More...** contains manual repayment, editing, cancellation, and reopening for exceptions. To correct an individual repayment, expand **History** and use **Undo** on that payment.
-- **Requests** opens optional Shared gold agreements. Both players need IOU to share; personal records need no connection or acceptance. See the [short Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md).
-- **Activity** shows trades, sent mail, collected mail, and repayments. **Options** holds automatic trade/mail preferences, display preferences, optional backups, and the connection diagnostic. `/iou activity` opens Activity; `/iou trades` remains an alias.
+If you owe someone **5g** and successfully mail them **5g**, your own ledger counts that repayment immediately. It does not wait for collection, the other player being online, or their addon acknowledging it. Postage is excluded. Incoming mail counts after confirmed collection. COD, auction/system/returned mail, failed actions, and uncertain mailbox changes are excluded from automatic matching.
 
-Click the minimap button or assign IOU a key in the game's keybinding settings. Drag the window header to move it. IOU remembers its position.
+Mixed exchanges, several eligible IOUs, item variants, and unresolved overlapping personal/Shared records need a choice in **Activity**. IOU does not guess. **Undo** on a repayment notice or Activity restores the applied balance and retains the original event. It does not delete a loan you deliberately created with Track as IOU.
 
-## What changes a balance
+Automatic trade and mail matching can be disabled separately in **Options**. Manual payment, editing, cancellation, and correction actions remain under **More** for exceptions. History and full notes expand when needed; optional backups stay under **Options → Backups**.
 
-Confirmed trades, successfully sent mail, and confirmed mail collections from an exact player can repay matching personal IOUs automatically. Gold uses exact copper and items use whole quantities and their item identity. Partial repayments leave the remainder open; excess stays unassigned. Opening a trade or reading mail alone never changes a balance.
+## Share when it helps
 
-An exchange in both directions, an item variant that needs checking, overlapping personal/Shared records, or multiple eligible IOUs needs review. **Activity** shows what was given and received and lets you choose an eligible personal IOU without retyping the amount. Shared repayments retain their existing confirmation flow. Purchases and gifts stay quiet and never become loans automatically. Trade and mail automatic matching can be disabled separately in Options.
+Use **Share with player** while creating a gold or item IOU, or select an existing IOU and click **Share IOU**. Both players need the current IOU version and Requests enabled. The recipient opens **Requests**, reviews the amount and direction, then accepts or declines. A new loan is never accepted automatically.
 
-Use **Undo** on the notice or Activity to reverse applied repayments. The original payment events remain in history. A loan explicitly created with **Track as IOU** remains an ordinary IOU; repayment Undo does not delete it. Manual **More...** actions remain available for exceptions and favors. Activity receipts are separate from personal ledger exports; existing personal and Shared records and export formats are preserved.
+Sharing runs in the background; routine use needs no repeated pairing, Listen test, or open windows. Accepted records link to the ordinary ledger, so the same linked debt is not shown twice in reminders. Observed repayments can synchronize through the existing acknowledgment exchange; unclear or conflicting events remain available for review. Local successful mail repayment and peer synchronization are separate facts.
 
-Shared gold agreements exchange exact terms with one chosen player. The recipient reviews and accepts an original agreement, payment, or correction. Closing the Shared board leaves an explicitly connected session running; **Disconnect**, logout, or reload stops it and pauses unfinished requests. Closing a window never accepts terms. Shared items and automatic Shared repayments are planned.
+Older Shared records are retained. To bring an existing confirmed record into the ordinary ledger, use **Requests → More → Add to ledger**. IOU does not silently duplicate legacy debts. See the [Shared guide](docs/shared-agreements.md) for exceptions and recovery.
 
-If you owe someone 5g and successfully mail them 5g, your personal ledger counts that repayment immediately. It does not wait for collection or a peer acknowledgment, and postage is excluded. Incoming mail counts only after a confirmed collection. COD, auction/system/returned mail, failed actions, and ambiguous mailbox changes do not produce automatic repayments. Concurrent mailbox addons or incomplete/ambiguous inbox updates may require a manual exception. Native trade and mail behavior still needs live verification. The next milestone is a simpler Shared flow; see the [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md).
-
-## Commands
+## Commands and access
 
 | Command | Action |
 | --- | --- |
 | `/iou` | Show or hide the ledger. |
-| `/iou add` | Open a new IOU. |
-| `/iou target` | Show the selected player's IOUs. |
-| `/iou activity` / `/iou trades` | Review recent transfers, Track as IOU, and Undo repayments. |
-| `/iou settings` | Open settings. |
-| `/iou shared [full player name]` | Open Shared without sending. |
-| `/iou shared off` | Disconnect and pause unfinished Shared requests. |
-| `/iou export` / `/iou import` | Open optional personal backup/export or restore. |
-| `/iou test [full player name]` | Open the optional connection diagnostic without sending. |
-| `/iou test stop` | Stop diagnostic sending and listening. |
-| `/iou minimap show` / `/iou minimap hide` | Show or hide the minimap button. |
-| `/iou reminders on` / `/iou reminders off` | Change login reminders. |
-| `/iou resetpos` | Reset the ledger position. |
-| `/iou help` | Show available commands. |
+| `/iou add` / `/iou target` | Add an IOU or find the targeted player's records. |
+| `/iou activity` / `/iou trades` | Recent transfers, loan capture, review, and repayment Undo. |
+| `/iou shared [full name]` | Open Requests. Opening it sends nothing. |
+| `/iou settings` | Automatic tracking, Requests, display preferences, and optional backups. |
+| `/iou export` / `/iou import` | Optional personal export or restore. |
+| `/iou test [full name]` | Optional connection diagnostic; ordinary use does not require it. |
+| `/iou help` | All commands, including minimap, reminders, and position controls. |
+
+The minimap button and an optional game keybinding also open IOU. Window position is remembered. Each character has a separate ledger.
 
 ## Installation and saved data
 
-For manual installation, download `IOU-<version>.zip` from [Releases](https://github.com/PhilForever/IOU/releases) and extract its `IOU` folder into `_classic_beta_/Interface/AddOns/`. The final path must be `AddOns/IOU/IOU.toc`. Fully restart after a first installation or an update that adds files or keybindings; ordinary Lua-only updates can be loaded with `/reload`.
+Install through CurseForge, or extract the release ZIP's `IOU` folder into `_classic_beta_/Interface/AddOns/`. The final path is `AddOns/IOU/IOU.toc`. **Fully restart WoW after updating to 1.0.0**, which adds addon files. GitHub's automatic Source code archive needs its folder renamed to `IOU`.
 
-For a source checkout, name the addon folder `IOU`. GitHub's automatic **Source code** archive needs that folder rename.
+IOU stores character ledgers, Shared history, recent activity, links, and display preferences in `IOUDB`. Successful reload/logout saves these records; updating addon files keeps existing data. Personal `IOU2:` exports include personal records and payment history. Activity receipts and Shared consent records are separate; Shared recovery uses `IOUS1:`. Exports are optional and may contain private player names and notes.
 
-IOU stores personal character ledgers, separate Shared records, and account display preferences in `IOUDB`. WoW saves them on a successful reload or logout; updating addon files keeps the records. Personal saved-data persistence was tested with reload and a full restart. The user also confirmed that personal and Shared debts appear in the 0.6.0 trade and tooltip reminders.
+IOU targets Forever interface `16001`. Other WoW clients are unverified. It has no third-party addon library dependencies and is licensed under [MIT](LICENSE).
 
-Optional exports are under **Options → Backups**. Personal `IOU2:` exports include the current character's personal records and history; imports accept older `IOU1:` data and replace only that personal ledger after preview and confirmation. Shared records use a separate `IOUS1:` format and [recovery flow](https://github.com/PhilForever/IOU/blob/main/docs/shared-backups.md). Exports may contain private player names and notes; do not post them in a public issue.
+## Release readiness and development
 
-IOU targets Forever interface `16001`. Other WoW clients have not been verified. There are no third-party addon library dependencies. Licensed under [MIT](LICENSE).
-
-## Development
-
-Python 3.12 and Lupa run the Lua 5.1 regression harness:
+**1.0.0 implements the planned feature set. Live testing of changes from 0.7 onward is still pending.** Earlier live reports confirmed personal persistence, Shared messaging/payment exchanges, and tooltip/trade reminders; they do not establish the new trade/mail observers or 1.0 synchronization. The [short testing guide](docs/manual-testing.md) covers ordinary play without requiring screenshots or exports.
 
 ```sh
 python -m pip install -r requirements-dev.txt
@@ -84,6 +79,4 @@ python tools/test_curseforge.py
 python tools/package_iou.py
 ```
 
-The package command validates TOC/XML dependencies and creates an installable ZIP with a SHA-256 checksum under `artifacts/`. CI runs the checks on pull requests and pushes to `main`. A matching `vX.Y.Z` tag publishes a regular GitHub release and CurseForge **Release**. See [Publishing](https://github.com/PhilForever/IOU/blob/main/docs/publishing.md).
-
-Tests cover financial rules, data validation, mocked UI interactions, and simulated Shared clients. They do not prove native rendering, event delivery, or every client condition. The [testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md) distinguishes live results from automated evidence. See also [Contributing](https://github.com/PhilForever/IOU/blob/main/CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [development roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md).
+The Lua 5.1 harness covers financial rules, validation, simulated clients, and UI interactions. Mocks cannot prove native event timing, rendering, or every interaction with other addons. CI validates changes and matching `vX.Y.Z` tags publish regular GitHub and CurseForge **Release** files. See [Publishing](docs/publishing.md), [Contributing](CONTRIBUTING.md), the [changelog](CHANGELOG.md), and the [roadmap](docs/roadmap.md).

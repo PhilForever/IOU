@@ -382,7 +382,7 @@ test("Shared recovery cannot exceed retained-offer capacity or evict current con
     local backup=text(source,entry)
     local before=copy(wrapper(target)); local sends=target.sendCount
     local review,preview=stage(target,backup)
-    equal(preview.missing,32); equal(preview.currentOnly,1)
+    equal(preview.missing,source.ns.Shared.MAX_OFFERS); equal(preview.currentOnly,1)
     assert(not preview.canRestore and preview.problem)
     rejected(function() return target.service.ResolveRecovery("restore",review.token) end)
     assert(same(before,wrapper(target))); equal(#target.service.List(),1)
