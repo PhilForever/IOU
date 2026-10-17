@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.8.0"
+IOU.VERSION = "0.9.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -68,6 +68,7 @@ function IOU.Initialize()
     if type(settings.playerTooltips) ~= "boolean" then settings.playerTooltips = true end
     if type(settings.tradeReminders) ~= "boolean" then settings.tradeReminders = true end
     if type(settings.autoTradeRepayments) ~= "boolean" then settings.autoTradeRepayments = true end
+    if type(settings.autoMailRepayments) ~= "boolean" then settings.autoMailRepayments = true end
     if type(settings.minimapAngle) ~= "number" or settings.minimapAngle ~= settings.minimapAngle
         or settings.minimapAngle < 0 or settings.minimapAngle > 360 then settings.minimapAngle = 225 end
     local anchors = {TOPLEFT=true, TOP=true, TOPRIGHT=true, LEFT=true, CENTER=true,
@@ -83,6 +84,7 @@ end
 function IOU.GetLedger() return ledger end
 function IOU.Character() return character or "Character ledger" end
 function IOU.GetSettings() return ledger and IOUDB.settings end
+function IOU.ShowActivity(id) return IOU.ShowTradeActivity(id) end
 
 function IOU.ParseDueDate(text)
     text = (text or ""):match("^%s*(.-)%s*$")
@@ -242,7 +244,7 @@ local function slash(command)
     elseif command == "test" then IOU.ShowConnectionTest()
     elseif command:match("^test%s+") then IOU.ShowConnectionTest(original:match("^%S+%s+(.+)$"))
     elseif command == "add" then IOU.ShowAdd()
-    elseif command == "trades" then IOU.ShowTradeActivity()
+    elseif command == "trades" or command == "activity" then IOU.ShowTradeActivity()
     elseif command == "target" then IOU.ShowTargetRecords()
     elseif command == "export" then IOU.ShowBackup("export")
     elseif command == "import" then IOU.ShowBackup("import")
@@ -254,7 +256,7 @@ local function slash(command)
         IOU.GetSettings().reminders = command == "reminders on"
         IOU.Message("Login reminders " .. (IOU.GetSettings().reminders and "on." or "off."))
     elseif command == "help" then
-        IOU.Message("/iou - ledger; /iou add - new IOU; /iou trades - trade activity.")
+        IOU.Message("/iou - ledger; /iou add - new IOU; /iou activity - recent transfers.")
         IOU.Message("/iou export - optional backup; /iou import - restore.")
         IOU.Message("/iou target - target's IOUs; /iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
         IOU.Message("/iou test [full player name] - connection test; /iou test stop - stop listening.")
@@ -278,8 +280,11 @@ events:SetScript("OnEvent", function()
     if IOU.PlayerContext then IOU.PlayerContext.Initialize() end
     if IOU.TradeService then
         local tradeOK,tradeError=IOU.TradeService.Initialize()
-        if tradeOK and IOU.TradeObserver then IOU.TradeObserver.Initialize()
-        elseif not tradeOK then IOU.Message(tradeError) end
+        if tradeOK then
+            if IOU.TradeObserver then IOU.TradeObserver.Initialize() end
+            if IOU.MailSent then IOU.MailSent.Initialize() end
+            if IOU.MailReceived then IOU.MailReceived.Initialize() end
+        else IOU.Message(tradeError) end
     end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then

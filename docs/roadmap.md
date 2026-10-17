@@ -15,7 +15,7 @@ This is the development direction, not a claim that future features already work
 | 0.11 — Crafting and polish | Improve item selection, stacks, quantities, and material bundles; refine multiple-debt matching and player shortcuts. | Lending crafting materials is as convenient as lending gold. |
 | 1.0 — Reliability | Finish upgrade/reload/disconnect handling, duplicate-event protection, mixed trades, mail failure paths, Shared reconciliation, performance, UI scaling, and concise onboarding. | Dependable tracking during ordinary play. |
 
-Version 0.7 simplified presentation. Version 0.8 adds completed-trade observation, exact matching of clear personal repayments, compact allocation review, and Undo. Native completion behavior remains subject to live verification. Mail automation, automatic new-loan capture, and Shared consent changes are not part of 0.8.
+Versions 0.7 and 0.8 simplified the interface and added trade repayment tracking. Version 0.9 extends Activity to successful outgoing mail and confirmed incoming collections, with explicit **Track as IOU** for unassigned transfers. It never creates new loans automatically. Native trade and mail behavior remains subject to live verification; the user has deferred testing. The next milestone is the Shared redesign; existing consent rules are unchanged.
 
 ## Automatic repayment rules
 

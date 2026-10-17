@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — 2026-10-17
+
+- Added matching personal repayments from successfully sent mail. The sender's ledger updates on send success without waiting for collection or peer acknowledgment; postage and COD are excluded.
+- Added incoming player-mail observation requiring a native collection, success, and an unambiguous inbox asset change. Failed collections, returned/system/auction mail, unreadable data, and uncertain changes do not become repayments.
+- Extended Activity with Trade, Mail sent, and Mail collected. **Track as IOU** creates a personal loan from a chosen unassigned asset with the exact player, amount, and item link already filled; gifts and purchases never become debts automatically.
+- Kept repayment Undo separate from explicitly captured loans, preserved existing trade receipts and personal/Shared records, and added independent automatic mail preferences.
+
+Validation: mail observers, real financial service/Activity integration, capture and duplicate protection, plus the existing regression and publishing/package suites. Native 0.8 trade behavior and new mail event timing remain unverified in-game; testing was deferred by the user. Shared confirmation rules are unchanged. **Fully restart after updating because this release adds addon files.** Published through the regular Release channel.
+
 ## 0.8.0 — 2026-10-17
 
 - Added completed-trade observation for exact player names, copper, and item quantities. Clear personal IOU repayments apply automatically, including partial repayment; cancelled, failed, and duplicate trade events do not create payments.

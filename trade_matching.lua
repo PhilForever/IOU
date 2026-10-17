@@ -21,11 +21,11 @@ local function text(value, maximum)
     return public(value) and type(value) == "string" and #value <= maximum
         and not value:find("[%z\001-\031\127]")
 end
-local function array(value)
+local function array(value, maximum)
     if not plain(value) then return nil end
     local count, highest = 0, 0
     for key in pairs(value) do
-        if not integer(key, 1, MAX_SLOTS) then return nil end
+        if not integer(key, 1, maximum or MAX_SLOTS) then return nil end
         count, highest = count + 1, math.max(highest, key)
     end
     return count == highest and count or nil
@@ -68,11 +68,11 @@ local function candidateOrder(a, b)
     if a.source == "personal" then return a.entryID < b.entryID end
     return a.offerID < b.offerID
 end
-local function normalizeSide(side, direction)
+local function normalizeSide(side, direction, maximum)
     if not plain(side) then return nil, "Trade contents are unavailable." end
     local money = side.money == nil and 0 or side.money
     local items = side.items == nil and {} or side.items
-    if not integer(money, 0, MAX_TOTAL) or not array(items) then return nil, "Trade amounts are invalid." end
+    if not integer(money, 0, MAX_TOTAL) or not array(items, maximum) then return nil, "Transfer amounts are invalid." end
     local rows, groups = {}, {}
     if money > 0 then rows[#rows+1] = {asset="money", direction=direction, amount=money, label="Gold"} end
     for _, item in ipairs(items) do
@@ -119,10 +119,15 @@ local function makePlan(db, overview, transfer)
     local valid
     valid, problem = L.Validate(db)
     if not valid then return nil, problem end
-    local incoming, incomingNames = normalizeSide(transfer.incoming, "owed")
+    local medium=transfer.medium==nil and "trade" or transfer.medium
+    if medium~="trade" and medium~="mail_sent" and medium~="mail_received" then return nil,"Unknown transfer source." end
+    local maximum=medium=="trade" and MAX_SLOTS or 12
+    local incoming, incomingNames = normalizeSide(transfer.incoming, "owed", maximum)
     if not incoming then return nil, incomingNames end
-    local outgoing, outgoingNames = normalizeSide(transfer.outgoing, "owe")
+    local outgoing, outgoingNames = normalizeSide(transfer.outgoing, "owe", maximum)
     if not outgoing then return nil, outgoingNames end
+    if medium=="mail_sent" and #incoming>0 or medium=="mail_received" and #outgoing>0
+        or medium~="trade" and transfer.service then return nil,"Mail transfer direction is invalid." end
     local summary
     summary, problem = Summary.Build(db, overview, transfer.peer)
     if not summary then return nil, problem end

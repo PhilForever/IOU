@@ -4,7 +4,7 @@ Remember who owes you gold or crafting materials, and what you owe other players
 
 Target a player, click **+ New IOU**, choose the direction and amount, and save. Hovering that player or opening a trade shows the remaining debt. Your own records work even if the other player does not have IOU.
 
-**0.8.0 records straightforward trade repayments automatically.** A completed matching gold or item transfer reduces the personal IOU, with a quiet notice and **Undo**. Ambiguous trades wait in **Trade activity**. Requests, optional details, and history retain the compact 0.7 interface.
+**0.9.0 tracks repayments through trades and mail.** Matching gold or items reduce the personal IOU, with a quiet notice and **Undo**. **Activity** also offers **Track as IOU** for an unassigned transfer, with the name and amount already filled.
 
 [Download on CurseForge](https://www.curseforge.com/wow/addons/iou) · [GitHub Releases](https://github.com/PhilForever/IOU/releases)
 
@@ -16,6 +16,8 @@ Target a player, click **+ New IOU**, choose the direction and amount, and save.
 
 For items, focus the item field and Shift-click an item, or type its name. Favor records also remain available. Each character has a separate ledger.
 
+Already transferred something? Open **Activity**, select it, and click **Track as IOU**. What you gave becomes an IOU owed to you; what you received becomes an IOU you owe. Choose an asset first if the transfer contained several things.
+
 Hover the player or open a trade to see what remains. Gold in opposite directions is not netted, and item quantities retain their own units. Personal and Shared reminders have separate labels because they may describe the same real debt. **Target IOUs** finds the selected player's records. Tooltip and trade reminders can be disabled in Options.
 
 ## Use the ledger
@@ -24,21 +26,21 @@ Hover the player or open a trade to see what remains. Gold in opposite direction
 - Select a record for its remaining amount. Expand its history when you need the previous payments or changes.
 - **More...** contains manual repayment, editing, cancellation, and reopening for exceptions. To correct an individual repayment, expand **History** and use **Undo** on that payment.
 - **Requests** opens optional Shared gold agreements. Both players need IOU to share; personal records need no connection or acceptance. See the [short Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md).
-- **Activity** shows recent completed trades and repayments. **Options** holds automatic trade repayment preferences, display preferences, optional backups, and the connection diagnostic. `/iou trades` also opens Activity.
+- **Activity** shows trades, sent mail, collected mail, and repayments. **Options** holds automatic trade/mail preferences, display preferences, optional backups, and the connection diagnostic. `/iou activity` opens Activity; `/iou trades` remains an alias.
 
 Click the minimap button or assign IOU a key in the game's keybinding settings. Drag the window header to move it. IOU remembers its position.
 
 ## What changes a balance
 
-In **0.8.0**, a confirmed completed trade with an exact player can repay a matching personal IOU automatically. Gold uses exact copper and items use whole quantities and their item identity. Partial repayments leave the remainder open; excess is not turned into a new debt. Opening, accepting, closing, or cancelling a trade alone never records repayment.
+Confirmed trades, successfully sent mail, and confirmed mail collections from an exact player can repay matching personal IOUs automatically. Gold uses exact copper and items use whole quantities and their item identity. Partial repayments leave the remainder open; excess stays unassigned. Opening a trade or reading mail alone never changes a balance.
 
-An exchange in both directions, an item variant that needs checking, overlapping personal/Shared records, or multiple eligible IOUs needs review. **Trade activity** shows what was given and received and lets you choose an eligible personal IOU without retyping the amount. Shared repayments retain their existing confirmation flow. Unmatched trades are kept quietly as activity; purchases and gifts never become loans automatically. Automatic personal matching can be disabled in Options.
+An exchange in both directions, an item variant that needs checking, overlapping personal/Shared records, or multiple eligible IOUs needs review. **Activity** shows what was given and received and lets you choose an eligible personal IOU without retyping the amount. Shared repayments retain their existing confirmation flow. Purchases and gifts stay quiet and never become loans automatically. Trade and mail automatic matching can be disabled separately in Options.
 
-Use **Undo** on the notice or Trade activity to reverse a trade's applied repayments. The original payment events remain in history. Manual **More...** actions remain available for exceptions and favors. Trade activity is separate from personal ledger exports; existing personal and Shared records and export formats are preserved.
+Use **Undo** on the notice or Activity to reverse applied repayments. The original payment events remain in history. A loan explicitly created with **Track as IOU** remains an ordinary IOU; repayment Undo does not delete it. Manual **More...** actions remain available for exceptions and favors. Activity receipts are separate from personal ledger exports; existing personal and Shared records and export formats are preserved.
 
 Shared gold agreements exchange exact terms with one chosen player. The recipient reviews and accepts an original agreement, payment, or correction. Closing the Shared board leaves an explicitly connected session running; **Disconnect**, logout, or reload stops it and pauses unfinished requests. Closing a window never accepts terms. Shared items and automatic Shared repayments are planned.
 
-Mail automation is next. A successfully sent matching mail repayment will count in the sender's own personal ledger without waiting for collection or a peer acknowledgment. Sending or collecting mail does not change balances in 0.8.0. See the [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md).
+If you owe someone 5g and successfully mail them 5g, your personal ledger counts that repayment immediately. It does not wait for collection or a peer acknowledgment, and postage is excluded. Incoming mail counts only after a confirmed collection. COD, auction/system/returned mail, failed actions, and ambiguous mailbox changes do not produce automatic repayments. Concurrent mailbox addons or incomplete/ambiguous inbox updates may require a manual exception. Native trade and mail behavior still needs live verification. The next milestone is a simpler Shared flow; see the [roadmap](https://github.com/PhilForever/IOU/blob/main/docs/roadmap.md).
 
 ## Commands
 
@@ -47,7 +49,7 @@ Mail automation is next. A successfully sent matching mail repayment will count 
 | `/iou` | Show or hide the ledger. |
 | `/iou add` | Open a new IOU. |
 | `/iou target` | Show the selected player's IOUs. |
-| `/iou trades` | Review recent completed trades and Undo automatic repayments. |
+| `/iou activity` / `/iou trades` | Review recent transfers, Track as IOU, and Undo repayments. |
 | `/iou settings` | Open settings. |
 | `/iou shared [full player name]` | Open Shared without sending. |
 | `/iou shared off` | Disconnect and pause unfinished Shared requests. |

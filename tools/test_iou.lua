@@ -915,8 +915,18 @@ local function coreSession(config)
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["trade_observer.lua"]),"@IOU/trade_observer.lua"))
         setfenv(chunk,env); chunk("IOU",api)
+        for _,name in ipairs({"mail_sent.lua","mail_received.lua"}) do
+            chunk=assert(loadstring(assert(IOU_SOURCES[name]),"@IOU/"..name))
+            setfenv(chunk,env); chunk("IOU",api)
+        end
         chunk=assert(loadstring(assert(IOU_SOURCES["trade_ui.lua"]),"@IOU/trade_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
+    end
+    if config.mail and not config.ui then
+        for _,name in ipairs({"mail_sent.lua","mail_received.lua"}) do
+            local chunk=assert(loadstring(assert(IOU_SOURCES[name]),"@IOU/"..name))
+            setfenv(chunk,env); chunk("IOU",api)
+        end
     end
     if config.launcher then
         local chunk=assert(loadstring(assert(IOU_SOURCES["launcher.lua"]),"@IOU/launcher.lua"))

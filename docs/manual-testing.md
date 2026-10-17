@@ -4,16 +4,20 @@ Target client: **WoW: Forever**, interface `16001`.
 
 Use disposable records when trying financial actions. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
 
-## Normal-use check for 0.8.0
+## Normal-use checks when testing resumes
 
 Personal and Shared debts in the trade and tooltip reminders were confirmed working by the user. The user also reported the 0.7 presentation improved. There is no need to repeat those demonstrations or send screenshots/exports.
 
-Fully restart for the added addon files. Use disposable amounts with a friend:
+The user has deferred testing 0.8/0.9. These are optional normal-use checks for later, not a release-time request. Fully restart for the added addon files. Use disposable amounts with a friend:
 
 1. Add a personal IOU saying your friend owes you 10 silver. Have them successfully trade you 3 silver with nothing sent back. The balance should become 7 silver once. Use **Undo** on the notice or `/iou trades`; it should return to 10 silver.
 2. Try the same flow with a small quantity of a linked crafting item. Cancel a separate trade before completion; cancellation must not change the balance. With two eligible IOUs for that friend, the completed trade should wait for a choice in Trade activity rather than choose a debt silently.
 
-Report whether the successful gold/item trade reduced the right balance once, cancellation left it unchanged, and Undo restored it. If a trade was not detected, give the client build and the short sequence used. Full Lua error text helps if an error appears. Screenshots, exports, and backup tests are not required. Shared repayments still use confirmation; mail automation is not implemented in 0.8.
+3. For 0.9, create a personal IOU that you owe your friend 10 silver, then successfully mail them 3 silver. Your balance should become 7 silver immediately, before collection; postage must not count. Undo should restore 10 silver.
+4. With a personal IOU that your friend owes you, collect matching player mail. Only the amount actually taken should repay it. Reading a letter or a failed collection should leave it unchanged.
+5. For an unrelated recent transfer, open **Activity → Track as IOU**. The player and amount should be ready. Outgoing assets create a debt owed to you; incoming assets create one you owe. Reopening the same activity must not create a second loan.
+
+Report the short result and any full Lua error when convenient. Screenshots, exports, and backup tests are not required. Shared repayments still use confirmation. Concurrent or indistinguishable mailbox operations can be skipped conservatively; the ordinary manual action remains available.
 
 ## Validation record
 
@@ -40,6 +44,7 @@ Report whether the successful gold/item trade reduced the right balance once, ca
 | 0.7.0 | Compact presentation and existing financial/consent regression suites | Shortens the ordinary UI, collapses secondary information, and exposes Requests. No automatic trade/mail balance updates or financial/schema changes. Live usability remains to be assessed through ordinary use. |
 | 0.7.0 live feedback | User report on 17 October 2026 | The user found the addon improved and requested continued automation with less manual input. |
 | 0.8.0 | Trade matching, observer, service, Activity UI, and existing regression suites | Exercises completed/cancelled/failed/duplicate trade observations, exact personal matching, partial/excess amounts, item identity, allocation, Undo, and quiet notices. Native trade completion and event ordering remain pending live use; no automatic Shared consent or mail collection is inferred. |
+| 0.9.0 | Sent/received mail observers, Activity capture, financial integration, and existing suites | Requires send success or confirmed collection; exercises partial assets, failures, duplicates, stale choices, explicit loan creation, and repayment Undo. Existing 0.8/native mail event ordering and readability remain pending; the user deferred testing. No live result is inferred. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
 

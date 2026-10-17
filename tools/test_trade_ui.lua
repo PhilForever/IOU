@@ -13,7 +13,7 @@ end
 local function contains(value,part) assert(value:find(part,1,true),"missing "..part.." in "..value) end
 local function fixture(changes)
     local receipt={id="trade-1",peer="Birch Vale",at=1000,status="review",
-        outgoing={money=0,items={}},incoming={money=30000,items={}},applications={},
+        outgoing={money=0,items={}},incoming={money=30000,items={}},applications={},captures={},unmatched={},
         pending={{reason="ambiguous",direction="owed",asset="money",amount=30000,label="",
             candidates={{source="personal",entryID=1,balance=100000,label=""},
                 {source="personal",entryID=2,balance=50000,label=""}}}}}
@@ -51,6 +51,19 @@ local function session(receipts)
             local r=assert(find(id));r.status="ignored";r.pending={}
             api.OnTradeChanged(support.Copy(r));return support.Copy(r)
         end,
+        Capture=function(id,index,expected)
+            state.calls[#state.calls+1]={method="Capture",id=id,index=index,expected=support.Copy(expected)}
+            if state.fail then return nil,state.fail end
+            local r=assert(find(id));local asset=assert(r.unmatched[index])
+            assert(support.Same(asset,expected),"Capture must bind the displayed asset")
+            local direction=asset.direction=="owe" and "owed" or "owe"
+            local entry=assert(api.Add({player=r.peer,direction=direction,kind=asset.asset,
+                amount=asset.amount,label=asset.label,note="",due=0}))
+            local capture=support.Copy(asset);capture.entryID=entry.id;capture.loanDirection=direction
+            r.captures[#r.captures+1]=capture;table.remove(r.unmatched,index)
+            r.status=#r.pending>0 and "review" or #r.applications>0 and "applied" or "captured"
+            api.OnTradeChanged(support.Copy(r));return support.Copy(r)
+        end,
     }
     if not api.ShowTradeActivity then
         local chunk=assert(loadstring(assert(IOU_SOURCES["trade_ui.lua"]),"@IOU/trade_ui.lua"))
@@ -65,7 +78,7 @@ test("trade review opens only on request and requires an allocation choice",func
     api.OnTradeChanged(support.Copy(state.receipts[1]))
     equal(api.UI.tradeActivity,nil);equal(state.focused,focused)
     local toast=api.UI.tradeToast
-    assert(toast:IsShown());equal(toast.open:GetText(),"Review trade")
+    assert(toast:IsShown());equal(toast.open:GetText(),"Review")
     state.click(toast.open)
     local f=api.UI.tradeActivity
     assert(f:IsShown() and not toast:IsShown())
@@ -255,7 +268,7 @@ end)
 test("empty and unavailable Activity remain readable without financial actions",function()
     local state,api=session({});api.ShowTradeActivity()
     local f=api.UI.tradeActivity
-    contains(f.empty:GetText(),"Completed trades")
+    contains(f.empty:GetText(),"Trades and mail")
     assert(not f.apply:IsShown() and not f.undo:IsShown() and not f.ignore:IsShown())
     api.TradeService=nil;api.ShowTradeActivity()
     contains(f.empty:GetText(),"unavailable");equal(#state.calls,0)
@@ -269,6 +282,136 @@ test("partly applied review retains Undo after dismissing its unallocated remain
     state.click(f.ignore);assert(f.undo:IsShown())
     state.click(f.undo);equal(state.calls[2].method,"Undo")
     assert(not f.undo:IsShown())
+end)
+
+test("Activity identifies old trade receipts and each mail direction",function()
+    local trade=fixture({id="trade-old",pending={},status="unmatched"})
+    local sent=fixture({id="sent-1",medium="mail_sent",pending={},status="unmatched"})
+    local received=fixture({id="received-1",medium="mail_received",pending={},status="unmatched"})
+    local state,api=session({trade,sent,received})
+    api.ShowTradeActivity("trade-old");local f=api.UI.tradeActivity
+    contains(f.summary:GetText(),"Trade / No matching IOU")
+    contains(f.rows[1].when:GetText(),"Trade /")
+    api.ShowTradeActivity("sent-1");contains(f.summary:GetText(),"Mail sent /")
+    contains(f.rows[2].when:GetText(),"Mail sent /")
+    api.ShowTradeActivity("received-1");contains(f.summary:GetText(),"Mail collected /")
+    contains(f.rows[3].when:GetText(),"Mail collected /")
+    equal(#state.calls,0)
+end)
+
+test("mail repayment notices identify their source without opening Activity or taking focus",function()
+    local r=fixture({medium="mail_sent",pending={},status="applied",
+        applications={{entryID=1,eventID=1,amount=30000,label="",direction="owe",asset="money"}}})
+    local state,api=session({r});api.ShowAdd("Birch Vale");local focused=state.focused
+    api.OnTradeChanged(support.Copy(r));local toast=api.UI.tradeToast
+    contains(toast.label:GetText(),"Mail sent: Paid 3g")
+    equal(api.UI.tradeActivity,nil);equal(state.focused,focused)
+    r.medium="mail_received";r.status="review";r.applications={}
+    api.OnTradeChanged(support.Copy(r))
+    contains(toast.label:GetText(),"Mail collected: Choose an IOU")
+    assert(not toast.undo:IsShown());equal(#state.calls,0)
+end)
+
+test("one unassigned sent-mail asset tracks a personal loan with one explicit click",function()
+    local r=fixture({medium="mail_sent",pending={},status="unmatched",incoming={money=0,items={}},
+        outgoing={money=50000,items={}},unmatched={{direction="owe",asset="money",amount=50000,label=""}}})
+    local state,api=session({r});local before=#api.GetLedger().entries
+    api.OnTradeChanged(support.Copy(r));equal(#api.GetLedger().entries,before)
+    equal(api.UI.tradeToast,nil);equal(#state.calls,0)
+    api.ShowTradeActivity();local f=api.UI.tradeActivity
+    assert(f.capture:IsShown() and f.capture.enabled and not f.apply:IsShown())
+    assert(not f.repayMode:IsShown() and not f.captureMode:IsShown())
+    contains(f.candidates[1]:GetText(),"Owes you 5g")
+    state.click(f.capture)
+    equal(#state.calls,1);equal(state.calls[1].method,"Capture");equal(state.calls[1].index,1)
+    equal(state.calls[1].expected.direction,"owe");equal(state.calls[1].expected.amount,50000)
+    equal(#r.unmatched,0);equal(#r.captures,1);equal(r.captures[1].loanDirection,"owed")
+    contains(f.summary:GetText(),"Tracked as IOU");contains(f.summary:GetText(),"IOU added: Owes you 5g")
+    assert(not f.capture:IsShown() and f.records:IsShown())
+    f.capture.scripts.OnClick(f.capture);equal(#state.calls,1)
+    equal(api.Ledger.Get(api.GetLedger(),r.captures[1].entryID).direction,"owed")
+end)
+
+test("collected mail item tracking preserves the native label and reverses loan direction",function()
+    local native="|cffFFFFFF|Hitem:2589:0:0:0:0:0:0:0|h[Linen Cloth]|h|r"
+    local r=fixture({medium="mail_received",pending={},status="unmatched",incoming={money=0,
+        items={{itemID=2589,link=native,name="Linen Cloth",quantity=12}}},
+        unmatched={{direction="owed",asset="item",amount=12,label=native,itemID=2589,itemKey="item:2589"}}})
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    contains(f.candidates[1]:GetText(),"You owe 12 x [Linen Cloth]")
+    state.click(f.capture)
+    equal(state.calls[1].expected.label,native)
+    equal(state.calls[1].expected.itemKey,"item:2589")
+    local entry=api.Ledger.Get(api.GetLedger(),r.captures[1].entryID)
+    equal(entry.direction,"owe");equal(entry.label,native);equal(entry.amount,12)
+    contains(f.summary:GetText(),"IOU added: You owe 12 x [Linen Cloth]")
+end)
+
+test("several unassigned assets require a choice and bind the chosen index",function()
+    local r=fixture({status="unmatched",pending={},unmatched={}})
+    for index=1,5 do r.unmatched[index]={direction=index%2==0 and "owed" or "owe",asset="item",
+        amount=index,label="Material "..index,itemID=100+index,itemKey="item:"..(100+index)} end
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    assert(f.capture:IsShown() and not f.capture.enabled and f.choiceNext:IsShown())
+    contains(f.pendingText:GetText(),"Choose what to track")
+    state.click(f.candidates[1]);assert(f.capture.enabled)
+    state.click(f.choiceNext);assert(not f.capture.enabled)
+    state.click(f.candidates[2]);state.click(f.capture)
+    equal(state.calls[1].index,5);equal(state.calls[1].expected.label,"Material 5")
+    equal(#r.unmatched,4);equal(r.captures[1].amount,5)
+    assert(not f.capture.enabled)
+end)
+
+test("repayment and new-loan actions occupy separate modes for a partly matched transfer",function()
+    local r=fixture({unmatched={{direction="owe",asset="money",amount=50000,label=""}}})
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    assert(f.repayMode:IsShown() and f.captureMode:IsShown())
+    assert(f.apply:IsShown() and not f.capture:IsShown())
+    state.click(f.candidates[1]);assert(f.apply.enabled)
+    state.click(f.captureMode)
+    assert(f.capture:IsShown() and f.capture.enabled and not f.apply:IsShown() and not f.shared:IsShown() and not f.records:IsShown())
+    contains(f.candidates[1]:GetText(),"Owes you 5g")
+    state.click(f.repayMode)
+    assert(f.apply:IsShown() and not f.apply.enabled and not f.capture:IsShown())
+    equal(#state.calls,0)
+end)
+
+test("stale Track rejects a changed or shifted asset before calling the service",function()
+    local r=fixture({pending={},status="unmatched",unmatched={
+        {direction="owe",asset="money",amount=50000,label=""},
+        {direction="owed",asset="item",amount=12,label="Linen Cloth",itemID=2589,itemKey="item:2589"}}})
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    state.click(f.candidates[2]);assert(f.capture.enabled)
+    table.remove(r.unmatched,1)
+    state.click(f.capture);equal(#state.calls,0);equal(#r.captures,0)
+    contains(f.message:GetText(),"changed")
+    -- Refresh binds the new single asset, but another intervening edit is still rejected.
+    r.unmatched[1].amount=4
+    state.click(f.capture);equal(#state.calls,0);equal(#r.captures,0)
+end)
+
+test("capture failure keeps the asset available and displays the service reason",function()
+    local r=fixture({pending={},status="unmatched",unmatched={{direction="owe",asset="money",amount=50000,label=""}}})
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    state.fail="IOU limit reached."
+    state.click(f.capture)
+    equal(#r.captures,0);equal(#r.unmatched,1);equal(r.status,"unmatched")
+    contains(f.message:GetText(),"IOU limit reached")
+    assert(f.capture:IsShown() and f.capture.enabled)
+    equal(#state.messages,0)
+end)
+
+test("Undo remains a repayment action when a separate captured loan is present",function()
+    local r=fixture({pending={},status="applied",unmatched={},
+        applications={{entryID=1,eventID=1,amount=30000,label="",direction="owed",asset="money"}},
+        captures={{entryID=2,direction="owe",loanDirection="owed",asset="money",amount=50000,label=""}}})
+    local state,api=session({r});api.ShowTradeActivity();local f=api.UI.tradeActivity
+    assert(f.undo:IsShown() and not f.capture:IsShown())
+    contains(f.summary:GetText(),"Applied: 3g");contains(f.summary:GetText(),"IOU added: Owes you 5g")
+    state.click(f.undo)
+    equal(state.calls[1].method,"Undo");equal(#r.captures,1)
+    contains(f.summary:GetText(),"Reversed: 3g");contains(f.summary:GetText(),"IOU added: Owes you 5g")
+    assert(not f.undo:IsShown() and not f.capture:IsShown() and f.records:IsShown())
 end)
 
 return results

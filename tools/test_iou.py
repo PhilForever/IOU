@@ -48,7 +48,9 @@ def main() -> int:
                   "test_shared_backup_ui.lua", "test_shared_view.lua", "test_shared_workflow.lua",
                   "test_player_summary.lua", "test_player_context.lua",
                   "test_compact_ui.lua", "test_compact_shared_ui.lua", "test_trade_matching.lua",
-                  "test_trade_service.lua", "test_trade_observer.lua", "test_trade_ui.lua")]
+                  "test_trade_service.lua", "test_trade_observer.lua", "test_trade_ui.lua",
+                  "test_mail_activity.lua", "test_mail_sent.lua", "test_mail_received.lua",
+                  "test_mail_integration.lua", "test_capture_edges.lua")]
     for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
@@ -77,7 +79,8 @@ def main() -> int:
                              "Shared wire", "Shared service", "Shared payment codec",
                              "Shared payments", "Shared payment integration", "Shared backup codec", "Shared recovery",
                              "Shared backup UI", "Shared view", "Shared workflow", "Player summary", "Player context",
-                             "Compact UI", "Compact Shared UI", "Trade matching", "Trade service", "Trade observer", "Trade UI"), counts,
+                             "Compact UI", "Compact Shared UI", "Trade matching", "Trade service", "Trade observer", "Trade UI",
+                             "Mail activity", "Mail sent", "Mail received", "Mail integration", "Capture edges"), counts,
                             strict=True):
         print(f"{label} checks: {count} passed.")
     print(f"Checks: {sum(counts)} passed.")

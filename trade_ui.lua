@@ -5,12 +5,12 @@ local H = UI.Helpers
 local GOLD, MUTED = {0.88,0.73,0.42}, {0.65,0.66,0.63}
 local PAGE_SIZE, CHOICES = 5, 3
 local statuses = {applied="Applied",review="Choose an IOU",unmatched="No matching IOU",
-    undone="Undone",ignored="Dismissed"}
+    undone="Undone",ignored="Dismissed",captured="Tracked as IOU"}
 local reasons={mixed_trade="An exchange: balances unchanged.",trade_service="Trade included a service: balances unchanged.",
     shared_unavailable="Shared records unavailable; balances unchanged.",item_identity="Item identity needs checking.",
     item_ambiguous="Choose the item IOU repaid.",source_conflict="Personal and Shared records may overlap.",
-    shared_confirmation="Shared repayments still need confirmation.",multiple_ious="Choose the IOU repaid by this trade.",
-    automatic_off="Automatic repayment is off. Apply this trade if it was repayment.",
+    shared_confirmation="Shared repayments still need confirmation.",multiple_ious="Choose the IOU repaid.",
+    automatic_off="Automatic repayment is off. Apply only if repayment.",
     ledger_changed="This IOU needs checking before repayment."}
 local choiceReasons={mixed_trade="Both sides gave something. Apply only if repayment.",
     trade_service="Includes a service. Apply only if repayment.",
@@ -55,10 +55,25 @@ local function service()
 end
 local function call(name,...)
     local s=service()
-    if not s or type(s[name])~="function" then return nil,"Trade history is unavailable." end
+    if not s or type(s[name])~="function" then return nil,"Activity is unavailable." end
     local ok,value,err=pcall(s[name],...)
-    if not ok then return nil,"Could not update this trade. Try again." end
+    if not ok then return nil,"Could not update this activity. Try again." end
     return value,err
+end
+local function source(receipt)
+    if receipt.medium=="mail_sent" then return "Mail sent" end
+    if receipt.medium=="mail_received" then return "Mail collected" end
+    return "Trade"
+end
+local function loanDirection(value)
+    return value.loanDirection or (value.direction=="owe" and "owed" or "owe")
+end
+local function debt(value,direction)
+    return (direction=="owed" and "Owes you " or "You owe ")..amount(value.asset,value.amount,value.label,40)
+end
+local function sameAsset(a,b)
+    return a and b and a.direction==b.direction and a.asset==b.asset and a.amount==b.amount
+        and a.label==b.label and a.itemID==b.itemID and a.itemKey==b.itemKey
 end
 local function dateLabel(at)
     if type(at)~="number" then return "" end
@@ -99,20 +114,20 @@ local function sameChoice(a,b)
 end
 local refresh
 local function showResult(f,value,err)
-    f.message:SetText(value and "" or text(err or "This trade changed. Review it again."))
+    f.message:SetText(value and "" or text(err or "This activity changed. Review it again."))
     refresh(f)
 end
 local function createActivity()
     local f=H.window("IOUTradeActivity",780,566)
     UI.tradeActivity=f
     f.page,f.choicePage=1,1
-    H.font(f,23,22,-22,690,"Trade activity",GOLD)
+    H.font(f,23,22,-22,690,"Activity",GOLD)
     f.empty=H.font(f,12,24,-78,230,"")
     f.rows={}
     for index=1,PAGE_SIZE do
         local row=H.button(f,"",242,22,-76-(index-1)*76,function(self)
             if not self.receiptID then return end
-            f.selected,f.choice,f.choicePage=self.receiptID,nil,1
+            f.selected,f.choice,f.captureChoice,f.choicePage,f.mode=self.receiptID,nil,nil,1,nil
             f.message:SetText("");f.scroll:SetVerticalScroll(0);refresh(f)
         end)
         row:SetHeight(66)
@@ -122,29 +137,37 @@ local function createActivity()
         f.rows[index]=row
     end
     f.previous=H.button(f,"<",30,22,-472,function()
-        f.page=f.page-1;f.selected=nil;f.choice=nil;f.choicePage=1;f.scroll:SetVerticalScroll(0);refresh(f)
+        f.page=f.page-1;f.selected=nil;f.choice=nil;f.captureChoice=nil;f.mode=nil;f.choicePage=1;f.scroll:SetVerticalScroll(0);refresh(f)
     end)
     f.pages=H.font(f,11,62,-480,152,"")
     f.next=H.button(f,">",30,234,-472,function()
-        f.page=f.page+1;f.selected=nil;f.choice=nil;f.choicePage=1;f.scroll:SetVerticalScroll(0);refresh(f)
+        f.page=f.page+1;f.selected=nil;f.choice=nil;f.captureChoice=nil;f.mode=nil;f.choicePage=1;f.scroll:SetVerticalScroll(0);refresh(f)
     end)
     local detail=H.panel(f,470,394,286,-76)
     f.scroll,f.content=H.scroll(detail,426,166,14,-12)
     f.summary=H.font(f.content,12,0,0,420,"")
-    f.pendingText=H.font(detail,12,14,-186,438,"",GOLD)
+    f.repayMode=H.button(detail,"Repay IOU",132,14,-178,function()
+        f.mode="repay";f.choicePage=1;f.choice=nil;f.captureChoice=nil;refresh(f)
+    end)
+    f.captureMode=H.button(detail,"Track new IOU",132,154,-178,function()
+        f.mode="capture";f.choicePage=1;f.choice=nil;f.captureChoice=nil;refresh(f)
+    end)
+    f.pendingText=H.font(detail,12,14,-204,438,"",GOLD)
     f.pendingText:SetHeight(30);f.pendingText:SetMaxLines(2)
     f.candidates={}
     for index=1,CHOICES do
-        local row=H.button(detail,"",438,14,-220-(index-1)*42,function(self)
-            if not self.choice then return end
-            f.choice=self.choice;refresh(f)
+        local row=H.button(detail,"",438,14,-240-(index-1)*42,function(self)
+            if self.capture then f.captureChoice=self.capture
+            elseif self.choice then f.choice=self.choice
+            else return end
+            refresh(f)
         end)
         row:SetHeight(36)
         f.candidates[index]=row
     end
-    f.choicePrevious=H.button(detail,"<",30,14,-354,function() f.choicePage=f.choicePage-1;f.choice=nil;refresh(f) end)
-    f.choicePages=H.font(detail,11,54,-362,190,"")
-    f.choiceNext=H.button(detail,">",30,250,-354,function() f.choicePage=f.choicePage+1;f.choice=nil;refresh(f) end)
+    f.choicePrevious=H.button(detail,"<",30,14,-366,function() f.choicePage=f.choicePage-1;f.choice=nil;f.captureChoice=nil;refresh(f) end)
+    f.choicePages=H.font(detail,11,54,-374,190,"")
+    f.choiceNext=H.button(detail,">",30,250,-366,function() f.choicePage=f.choicePage+1;f.choice=nil;f.captureChoice=nil;refresh(f) end)
     f.apply=H.button(f,"Apply repayment",156,286,-480,function()
         local c=f.choice
         if not c then return end
@@ -160,6 +183,17 @@ local function createActivity()
         end
         local value,err=call("Resolve",f.selected,c.entryID,c.amount,c.pendingIndex)
         f.choice=nil;showResult(f,value,err)
+    end)
+    f.capture=H.button(f,"Track as IOU",156,286,-480,function()
+        local c=f.captureChoice
+        if not c then return end
+        local receipt=call("Get",f.selected)
+        local current=receipt and receipt.unmatched and receipt.unmatched[c.index]
+        if not sameAsset(current,c.asset) then
+            f.captureChoice=nil;f.message:SetText("This activity changed. Choose the asset again.");refresh(f);return
+        end
+        local value,err=call("Capture",f.selected,c.index,c.asset)
+        f.captureChoice=nil;showResult(f,value,err)
     end)
     f.shared=H.button(f,"Shared requests",144,286,-480,function()
         local receipt=call("Get",f.selected)
@@ -187,7 +221,10 @@ refresh=function(f)
     f.page=math.max(1,math.min(f.page or 1,pages))
     local selected
     for _,receipt in ipairs(receipts) do if receipt.id==f.selected then selected=receipt;break end end
-    if not selected then selected=receipts[(f.page-1)*PAGE_SIZE+1];f.selected=selected and selected.id;f.choice=nil end
+    if not selected then
+        selected=receipts[(f.page-1)*PAGE_SIZE+1];f.selected=selected and selected.id
+        f.choice=nil;f.captureChoice=nil;f.mode=nil
+    end
     for index,row in ipairs(f.rows) do
         local receipt=receipts[(f.page-1)*PAGE_SIZE+index]
         row.receiptID=receipt and receipt.id
@@ -195,34 +232,59 @@ refresh=function(f)
         if receipt then
             row.peer:SetText(text(receipt.peer))
             row.status:SetText((receipt.id==f.selected and "> " or "")..(statuses[receipt.status] or "Recorded"))
-            row.when:SetText(dateLabel(receipt.at))
+            row.when:SetText(source(receipt).." / "..dateLabel(receipt.at))
         end
     end
-    f.empty:SetText(#receipts==0 and (err and text(err) or "Completed trades appear here.") or "")
+    f.empty:SetText(#receipts==0 and (err and text(err) or "Trades and mail appear here.") or "")
     f.pages:SetText(f.page.." / "..pages)
     f.previous:SetEnabled(f.page>1);f.next:SetEnabled(f.page<pages)
     local lines={}
     if selected then
-        lines={text(selected.peer),statuses[selected.status] or "Recorded","",
+        lines={text(selected.peer),source(selected).." / "..(statuses[selected.status] or "Recorded"),"",
             "Given: "..assets(selected.outgoing),"Received: "..assets(selected.incoming)}
         for _,application in ipairs(selected.applications or {}) do
             local entry=ledger and ledger.entries and ledger.entries[application.entryID]
             lines[#lines+1]=(selected.status=="undone" and "Reversed: " or "Applied: ")
                 ..amount(application.asset or (entry and entry.kind) or (application.label=="" and "money" or "item"),application.amount,application.label)
         end
+        for _,capture in ipairs(selected.captures or {}) do
+            lines[#lines+1]="IOU added: "..debt(capture,loanDirection(capture)).." (#"..tostring(capture.entryID)..")"
+        end
     end
     f.summary:SetText(table.concat(lines,"\n"))
     f.content:SetHeight(math.max(166,f.summary:GetStringHeight()+12))
     local rows,shared,changed={},false,false
     if selected then rows,shared,changed=choices(selected,ledger) end
+    local captureRows={}
+    local s=service()
+    if selected and s and type(s.Capture)=="function" then
+        for index,value in ipairs(selected.unmatched or {}) do
+            if (value.asset=="money" or value.asset=="item") and (value.direction=="owe" or value.direction=="owed")
+                and type(value.amount)=="number" and value.amount>0 then
+                captureRows[#captureRows+1]={index=index,asset=value}
+            end
+        end
+    end
     local pending=selected and #(selected.pending or {})>0
     local firstPending=selected and selected.pending and selected.pending[1]
-    local choicePages=math.max(1,math.ceil(#rows/CHOICES))
+    local repayAvailable=#rows>0 or pending==true
+    local captureAvailable=#captureRows>0
+    if f.mode=="capture" and not captureAvailable then f.mode=nil;f.captureChoice=nil end
+    if f.mode=="repay" and not repayAvailable then f.mode=nil;f.choice=nil end
+    f.mode=f.mode or (repayAvailable and "repay" or captureAvailable and "capture" or "repay")
+    local capturing=f.mode=="capture" and captureAvailable
+    f.repayMode:SetShown(repayAvailable and captureAvailable);f.captureMode:SetShown(repayAvailable and captureAvailable)
+    f.repayMode:SetEnabled(capturing);f.captureMode:SetEnabled(not capturing)
+    local visibleRows=capturing and captureRows or rows
+    local choicePages=math.max(1,math.ceil(#visibleRows/CHOICES))
     f.choicePage=math.max(1,math.min(f.choicePage or 1,choicePages))
-    local currentChoice
+    local currentChoice,currentCapture
+    -- A single unassigned asset needs only the explicit Track click.
+    if capturing and #captureRows==1 and not f.captureChoice then f.captureChoice=captureRows[1] end
     for index,row in ipairs(f.candidates) do
-        local choice=rows[(f.choicePage-1)*CHOICES+index]
-        row.choice=choice;row:SetShown(choice~=nil)
+        local choice=not capturing and rows[(f.choicePage-1)*CHOICES+index] or nil
+        local capture=capturing and captureRows[(f.choicePage-1)*CHOICES+index] or nil
+        row.choice,row.capture=choice,capture;row:SetShown(choice~=nil or capture~=nil)
         if choice then
             local c,p=choice.candidate,choice.pending
             local selectedChoice=sameChoice(f.choice,choice)
@@ -233,22 +295,29 @@ refresh=function(f)
             local repayment=p.asset=="money" and H.money(value) or tostring(value)
             row:SetText((selectedChoice and "> " or "")..direction..amount(p.asset,choice.balance,c.label or p.label,32)
                 .."  (#"..tostring(c.entryID)..")\nRepay "..repayment..note)
+        elseif capture then
+            local selectedCapture=f.captureChoice and f.captureChoice.index==capture.index
+                and sameAsset(f.captureChoice.asset,capture.asset)
+            if selectedCapture then currentCapture=capture end
+            row:SetText((selectedCapture and "> " or "")..debt(capture.asset,loanDirection(capture.asset)))
         end
     end
-    f.choice=currentChoice
+    f.choice=currentChoice;f.captureChoice=currentCapture
     local firstChoice=rows[(f.choicePage-1)*CHOICES+1]
     local visiblePending=currentChoice and currentChoice.pending or firstChoice and firstChoice.pending or firstPending
-    f.pendingText:SetText(#rows>0 and (choiceReasons[visiblePending.reason] or "Choose the IOU repaid by this trade.")
+    f.pendingText:SetText(capturing and (#captureRows>1 and "Choose what to track. Gifts and purchases need no IOU." or "Track only if this was a loan.")
+        or #rows>0 and (choiceReasons[visiblePending.reason] or "Choose the IOU repaid.")
         or shared and "Shared repayments still need confirmation."
         or changed and "These IOUs changed. Check their current balances."
         or pending and (reasons[firstPending.reason] or "No matching IOU. Balances unchanged.") or "")
-    local paging=#rows>CHOICES
+    local paging=#visibleRows>CHOICES
     f.choicePrevious:SetShown(paging);f.choiceNext:SetShown(paging);f.choicePages:SetShown(paging)
     f.choicePrevious:SetEnabled(f.choicePage>1);f.choiceNext:SetEnabled(f.choicePage<choicePages)
     f.choicePages:SetText(f.choicePage.." / "..choicePages)
-    f.apply:SetShown(#rows>0);f.apply:SetEnabled(currentChoice~=nil)
-    f.shared:SetShown(#rows==0 and shared)
-    f.records:SetShown(#rows==0 and not shared and pending==true)
+    f.apply:SetShown(not capturing and #rows>0);f.apply:SetEnabled(currentChoice~=nil)
+    f.capture:SetShown(capturing);f.capture:SetEnabled(currentCapture~=nil)
+    f.shared:SetShown(not capturing and #rows==0 and shared)
+    f.records:SetShown(not capturing and #rows==0 and not shared and (pending==true or selected and #(selected.captures or {})>0))
     f.undo:SetShown(selected and #(selected.applications or {})>0 and selected.status~="undone" or false)
     f.ignore:SetShown(pending==true or (selected and selected.status=="unmatched") or false)
 end
@@ -256,7 +325,7 @@ end
 function IOU.ShowTradeActivity(receiptID)
     local f=UI.tradeActivity or createActivity()
     if receiptID then
-        f.selected,f.choice,f.choicePage=receiptID,nil,1
+        f.selected,f.choice,f.captureChoice,f.choicePage,f.mode=receiptID,nil,nil,1,nil
         local receipts=call("List") or {}
         for index,receipt in ipairs(receipts) do
             if receipt.id==receiptID then f.page=math.ceil(index/PAGE_SIZE);break end
@@ -274,17 +343,17 @@ local function toast(receipt)
         f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true)
         f.label=H.font(f,12,12,-12,374,"",GOLD)
         f.label:SetHeight(28);f.label:SetMaxLines(2)
-        f.open=H.button(f,"View trade",110,12,-44,function() if f.receiptID then IOU.ShowTradeActivity(f.receiptID) end;f:Hide() end)
+        f.open=H.button(f,"View",110,12,-44,function() if f.receiptID then IOU.ShowTradeActivity(f.receiptID) end;f:Hide() end)
         f.undo=H.button(f,"Undo",76,130,-44,function()
             local value,err=call("Undo",f.receiptID)
-            if value then f:Hide() else f.label:SetText(text(err or "Open this trade to review it.")) end
+            if value then f:Hide() else f.label:SetText(text(err or "Open Activity to review it.")) end
         end)
         H.button(f,"X",24,402,-8,function() f:Hide() end)
         f:SetScript("OnHide",function(self) self:SetScript("OnUpdate",nil) end)
         f:Hide()
     end
     f.receiptID=receipt.id
-    local caption="Review trade"
+    local caption="Choose an IOU"
     if receipt.status=="applied" then
         local applications=receipt.applications or {}
         if #applications==1 then
@@ -295,8 +364,8 @@ local function toast(receipt)
                 ..amount(a.asset or (entry and entry.kind) or "money",a.amount,a.label,32)
         else caption=tostring(#applications).." IOUs updated" end
     end
-    f.label:SetText(label(receipt.peer).." - "..caption)
-    f.open:SetText(receipt.status=="review" and "Review trade" or "View trade")
+    f.label:SetText(label(receipt.peer).." - "..source(receipt)..": "..caption)
+    f.open:SetText(receipt.status=="review" and "Review" or "View")
     f.undo:SetShown(#(receipt.applications or {})>0)
     f:Show()
     -- A short notice never opens the ledger or takes keyboard focus.

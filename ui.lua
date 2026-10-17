@@ -1058,7 +1058,7 @@ end
 function IOU.ShowSettings()
     showMain()
     if not UI.settings then
-        local f = window("IOUSettingsWindow", 476, 532)
+        local f = window("IOUSettingsWindow", 476, 574)
         UI.settings = f
         font(f, 21, 22, -22, 410, "IOU settings", GOLD)
         font(f, 11, 24, -63, 420, "These preferences apply across your characters.", MUTED)
@@ -1080,19 +1080,23 @@ function IOU.ShowSettings()
             IOU.GetSettings().autoTradeRepayments = not IOU.GetSettings().autoTradeRepayments
             IOU.ShowSettings()
         end)
-        button(f, "Trade activity", 150, 300, -265, function() f:Hide(); IOU.ShowTradeActivity() end)
-        button(f, "Reset window position", 260, 24, -307, function() IOU.ResetPosition() end)
-        button(f, "Shared agreements", 200, 24, -349, function()
+        button(f, "Activity", 150, 300, -265, function() f:Hide(); IOU.ShowTradeActivity() end)
+        f.mailAutomatic = button(f, "", 260, 24, -307, function()
+            IOU.GetSettings().autoMailRepayments = not IOU.GetSettings().autoMailRepayments
+            IOU.ShowSettings()
+        end)
+        button(f, "Reset window position", 260, 24, -349, function() IOU.ResetPosition() end)
+        button(f, "Shared agreements", 200, 24, -391, function()
             f:Hide(); IOU.OpenSharedAttention()
         end)
-        button(f, "Backups", 200, 242, -349, function()
+        button(f, "Backups", 200, 242, -391, function()
             f:Hide(); IOU.ShowBackup("export")
         end)
-        button(f, "Connection test", 260, 24, -391, function()
+        button(f, "Connection test", 260, 24, -433, function()
             f:Hide(); IOU.ShowConnectionTest()
         end)
-        font(f, 11, 24, -442, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour IOUs remain separate for each character.", MUTED)
-        font(f, 10, 24, -503, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
+        font(f, 11, 24, -484, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour IOUs remain separate for each character.", MUTED)
+        font(f, 10, 24, -545, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
     end
     local f = UI.settings
     f.minimap:SetText("Minimap button: " .. (IOU.GetSettings().minimap and "shown" or "hidden"))
@@ -1100,6 +1104,7 @@ function IOU.ShowSettings()
     f.tooltips:SetText("Player tooltips: " .. (IOU.GetSettings().playerTooltips and "on" or "off"))
     f.trade:SetText("Trade reminders: " .. (IOU.GetSettings().tradeReminders and "on" or "off"))
     f.automatic:SetText("Trade repayments: " .. (IOU.GetSettings().autoTradeRepayments and "automatic" or "manual"))
+    f.mailAutomatic:SetText("Mail repayments: " .. (IOU.GetSettings().autoMailRepayments and "automatic" or "manual"))
     f:Show()
 end
 
