@@ -1,14 +1,12 @@
 # IOU
 
-A personal debt and favor ledger for **WoW: Forever**. Remember who owes you gold, items, or help, and what you owe other players.
+A gold and item debt tracker for **WoW: Forever**. Remember who owes you 10g or 20 Linen Cloth, and what you owe other players.
 
-Create an agreement, record repayments as they happen, and keep the history when it is settled. Each character has a separate ledger.
+Click **+ New IOU**, enter the player and amount, and save. Targeting a player fills their name for you. Each character has a separate ledger; the other player does not need IOU for your own records.
 
-**0.5.0 makes Shared easier to use.** Find incoming and interrupted offers under **Needs review**, active agreements under **Agreements**, and delivery in progress under **Waiting**. Search names and notes, see remaining balances on agreement rows, and use the Shared button or minimap review count to find work needing attention. **Enable for selected player** fills the exact player from a retained offer and enables sharing only when you click it.
+**0.6.0 brings your records into normal play.** Hover a player to see what they owe you or what you owe them. Opening a trade shows the same reminder; **Target IOUs** opens the ledger for your target. Gold in each direction and item quantities stay separate. These reminders never record a repayment or change a trade.
 
-**Shared → Shared backups** exports agreements, payments, corrections, and acceptance history. Preview before staging recovery; restore adds missing history while keeping current records. Sharing stays off until you review the recovery and explicitly reconnect. See the [backup guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-backups.md).
-
-Shared gold agreements support proposals, explicit acceptance, partial payments, settlement, and full reversals of individual payments. The original proposer records financial events and the other player acknowledges them. On 0.3.2, two live clients completed all four connection probes and the user demonstrated acknowledged payment, correction, and settlement. The recovery flow and new board still need in-game checks.
+**Shared agreements are optional.** Open them from Settings when both players want to acknowledge a gold agreement. Closing the Shared window now leaves your chosen session enabled so the other player can review later in that session. **Disconnect**, logout, or reload stops sharing and pauses unfinished offers. Optional backups remain available in Settings. The new tooltip, trade, and close-window behavior await live verification.
 
 Downloads: [GitHub Releases](https://github.com/PhilForever/IOU/releases) · [CurseForge](https://www.curseforge.com/wow/addons/iou).
 
@@ -24,9 +22,9 @@ For a source checkout, copy the repository into a folder named `IOU` under `AddO
 
 IOU targets Forever interface `16001`. Version 0.1 was tested in game with both `/reload` and a full exit/restart, including working saved data. Later features still need the live regression checks in the [manual testing guide](https://github.com/PhilForever/IOU/blob/main/docs/manual-testing.md). Compatibility with other WoW clients has not been established.
 
-## Keep track of an agreement
+## Record what someone owes
 
-Click **+ New IOU**, choose **Owed to me** or **I owe**, and enter the player and agreement type:
+Target the player if they are nearby, click **+ New IOU**, and choose **Owed to me** or **I owe**. Enter gold or an item quantity and name, then save. No sharing, connection test, due date, or explanation is needed.
 
 | Type | Example | How to enter it |
 | --- | --- | --- |
@@ -35,6 +33,8 @@ Click **+ New IOU**, choose **Owed to me** or **I owe**, and enter the player an
 | Favor | 30 minutes of quest help | Enter quantity `30` and label `minutes of quest help`. |
 
 Use the player's full name to distinguish characters. Item links can be pasted or inserted by focusing the item label field and Shift-clicking an item. Notes and an optional due date provide context. Enter dates as `YYYY-MM-DD`; an agreement becomes overdue after the end of that day in the client's local time.
+
+Hover that player or open a trade to see your open records. Reminders use the complete player name, ignoring ASCII letter case and repeated spaces. They do not match a first name to a different surname or guess realm names. NPCs have no player-debt reminder. **Settings** lets you turn player tooltips and trade reminders on or off.
 
 Select an agreement to view its remaining balance and history. Record a partial payment or delivery, or settle its remaining balance. A mistaken repayment can be reversed; the original event and correction stay visible. Notes, due dates, and reasons are optional. Blank reasons are retained as "No reason provided" in the history.
 
@@ -46,7 +46,7 @@ Use **Edit details** to change the player, item/favor label, note, and due date 
 - Search player names, labels, and notes, filter by gold/items/favors, and sort by newest, oldest, player, or due date.
 - Due dates make overdue agreements visible. Optional login reminders summarize overdue agreements for the current character.
 - The minimap button opens the ledger. You can also assign a key in the game's keybinding settings.
-- Shared review counts include incoming offers and your own interrupted offers needing review. Shift-left-click the minimap button to open Shared review; ordinary left/right clicks retain their ledger/new-IOU actions. Notices never open a window or accept an offer automatically.
+- **Target IOUs** finds records for your selected player. Shared appears in the main header when an offer or recovery needs attention; otherwise open it from Settings. Shift-left-click the minimap button also opens Shared review. Notices never open a window or accept an offer automatically.
 - Move the ledger by dragging its header; IOU remembers its position.
 
 Gold summaries cover gold agreements only. Item and favor quantities retain their own units.
@@ -59,7 +59,7 @@ Gold summaries cover gold agreements only. Item and favor quantities retain thei
 | `/iou add` | Open a new agreement. |
 | `/iou export` | Open this character's backup text. |
 | `/iou import` | Open the backup import dialog. |
-| `/iou settings` | Open launcher, reminder, and position settings. |
+| `/iou settings` | Open tooltip/trade preferences, Shared agreements, backups, and other settings. |
 | `/iou shared [full player name]` | Open experimental shared agreements without sending. |
 | `/iou shared off` | Disconnect and pause unfinished shared offers. |
 | `/iou test [full player name]` | Open the optional connection test without sending; Listen enables replies. |
@@ -75,7 +75,7 @@ In keybinding settings, find **IOU** and assign the ledger toggle to a key of yo
 
 IOU stores its data in the account SavedVariable `IOUDB`, with separate personal character ledgers, separate shared-agreement records, and account display/reminder settings. WoW saves it on a successful reload or logout. Updating the addon files keeps those records.
 
-Use **Backups** or `/iou export`, select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's personal agreements and history. Shared agreements are not included in `IOU1`/`IOU2` exports or affected by personal imports. Backups can contain player names and private notes; remove personal information before sharing one in a public issue.
+Optional exports are under **Settings → Backups** or `/iou export`. Select the entire text with **Ctrl+A**, copy it with **Ctrl+C**, and save it outside the game. A backup includes the current character's personal agreements and history. Shared agreements are not included in `IOU1`/`IOU2` exports or affected by personal imports. Backups can contain player names and private notes; remove personal information before sharing one in a public issue.
 
 Use **Shared backups** in either backup window or the Shared board for a separate `IOUS1:` export. It includes this character's complete Shared records and local evidence. Restoring requires the same character identity, stages a disconnected review, and adds only missing records after validating the combined history. Existing versions and closed-offer markers are preserved. Different versions remain available for comparison; they are not automatically reconciled with the other player. The original imported snapshot and the records before the most recent recovery remain available to copy. This is a local snapshot, not a signed receipt or a new peer acknowledgment.
 
@@ -85,13 +85,13 @@ Version 0.2 exports `IOU2:` backups, accepts older `IOU1:` backups, and upgrades
 
 ## What IOU records
 
-The personal ledger is manual bookkeeping. It does not detect trades, verify payments, or synchronize personal entries. A settled personal entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
+The personal ledger is manual bookkeeping. Opening a trade displays a read-only reminder; completing it does not record a payment, item delivery, or settlement. A settled personal entry records your own decision. Gold balances use whole copper, and item/favor repayments use whole quantities.
 
-The **Shared** view exchanges gold agreements, payments, and reasoned payment reversals with one enabled peer. Both players opt in; a separate review shows exact terms and prior payment history before consent. The original agreement proposer sequences events, regardless of who owes the gold. Closing the window or reloading disconnects and pauses unfinished offers. The proposer updates a payment balance after observing the peer's acknowledgment; the recipient updates on commitment, so missing acknowledgment can temporarily leave different displayed balances. Shared records stay separate from personal totals. Read the [Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md) for use and interrupted-offer recovery.
+The **Shared** view exchanges gold agreements, payments, and payment reversals with one enabled peer. Both players opt in; a separate review shows exact terms and prior payment history before consent. The original agreement proposer sequences events, regardless of who owes the gold. Closing the window leaves that session enabled; **Disconnect**, logout, or reload stops it and pauses unfinished offers. The proposer updates a payment balance after observing the peer's acknowledgment; the recipient updates on commitment, so missing acknowledgment can temporarily leave different displayed balances. Your own notes and Shared records are labeled separately in reminders because they may describe the same debt; IOU never adds them together. Shared items are not supported yet. Read the [Shared guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements.md) for use and interrupted-offer recovery.
 
 **Settings > Connection test** sends fixed diagnostic text over logged addon whispers only while you explicitly enable it for one player. Both players need the same build, enter each other's full name, and click **Listen**; one clicks **Run test**. IOU checks ASCII, Unicode, and 239/240-byte messages automatically and creates a copyable report. Keep both windows open; closing the window, **Stop**, or a reload disables listening. See the [short connection guide](https://github.com/PhilForever/IOU/blob/main/docs/connection-test.md). Reports contain player names, so share them privately.
 
-The [Shared Agreements specification](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) and [development guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-development.md) describe the engine, bounded transport, and storage. Development continues independently of live testing; actual two-client delivery remains unverified and must be reported separately from simulations.
+The [Shared Agreements specification](https://github.com/PhilForever/IOU/blob/main/docs/shared-agreements-protocol.md) and [development guide](https://github.com/PhilForever/IOU/blob/main/docs/shared-development.md) describe the engine, bounded transport, and storage. Two live 0.3.2 clients demonstrated diagnostic delivery and acknowledged payment/correction/settlement. The user reported successful backup checks on 0.5.0; its supplied exports preserve existing records but retain the new test proposal as interrupted. These results do not establish the new 0.6.0 interactions or every client condition.
 
 No third-party addon libraries are required. The addon is available under the [MIT license](LICENSE).
 

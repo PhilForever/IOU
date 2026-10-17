@@ -22,7 +22,7 @@ Use a distinct versioned shared prefix; never interpret test-prefix traffic as p
 
 The initial send ceiling is 240 **UTF-8 bytes for the complete message**, subject to the live test. It is a chosen budget, not a claim about the client's absolute limit. Validate before enqueueing. No binary compression or opaque encoding of user-authored text.
 
-Alpha.3 frames up to 4096 bytes of logical text into at most 32 UTF-8-safe packets under `IOU_SHAREDv1`. Each packet has a readable `SW1` transfer/part/count/total header and stays within the chosen 240-byte ceiling. Reassembly is peer scoped, bounded to 8 active/8 cached transfers and 32 KiB, and expires at 45 seconds. Conflicts never reach the engine. Automated checks establish framing behavior; the real client's transport ceiling and event behavior remain unverified. Terms are never truncated.
+Alpha.3 frames up to 4096 bytes of logical text into at most 32 UTF-8-safe packets under `IOU_SHAREDv1`. Each packet has a readable `SW1` transfer/part/count/total header and stays within the chosen 240-byte ceiling. Reassembly is peer scoped, bounded to 8 active/8 cached transfers and 32 KiB, and expires at 45 seconds. Conflicts never reach the engine. Automated checks establish framing behavior. The 0.3.2 live pilot demonstrated exact ASCII/UTF-8 diagnostic echoes through 240 bytes and acknowledged Shared payments; it does not establish the client's maximum ceiling or every delivery condition. Terms are never truncated.
 
 ## Participant identity
 
@@ -145,7 +145,7 @@ Do not count drafts or pending offers as debt. Shared balances are displayed sep
 ## Validation plan and remaining evidence
 
 1. **Connection experiment:** two actual clients, exact observed names, ASCII/Unicode and measured-size echo reports, API result handling, blocked/offline behavior, and stopping after reload. A self-test is local preflight only.
-2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. IOU 0.3.0 implements this path with conservative framing; real client transport behavior remains unverified.
+2. **Protocol implementation:** a pure state reducer and strict codec, deterministic two-peer simulator, validated storage loading, bounded transport, and invariant tests. IOU 0.3.0 implements this path with conservative framing. The 0.3.2 live pilot demonstrated round trips and acknowledged payment/correction/settlement; the validation record in the manual testing guide tracks later features separately.
 3. **Failure simulation:** drop, duplicate, delay, reorder, and corrupt every handshake message; inject foreign senders, changed terms under reused IDs, unknown IDs, saturated queues, malformed UTF-8, and missing success enums. Exercise withdrawal/accept races in both orders.
 4. **Recovery simulation:** reload and simulated loss of unsaved state after each step, plus restoring old backups. Verify missing consent never activates, duplicates never create debt, and pending UI never claims delivery.
 5. **Opt-in two-player pilot:** explicit review, accept/decline/withdraw, matching terms on both clients, readable delivery progress, normal reload/logout, character isolation, and unchanged personal records. Record real outcomes when live testing resumes; simulation results do not establish client compatibility.

@@ -99,7 +99,7 @@ function IOU.ShowSharedReview(id, action)
         f.scroll, f.content = scroll(f, 574, 356, 24, -68)
         f.details = font(f.content, 12, 0, 0, 564, "")
         f.explanation = font(f, 12, 24, -443, 594, "", MUTED)
-        f.reasonCaption = font(f, 11, 24, -506, 594, "Reason for local review (optional)", MUTED)
+        f.reasonCaption = font(f, 11, 24, -506, 594, "Reason for closing (optional)", MUTED)
         f.reason = edit(f, 584, 28, -525, 256)
         f.status = font(f, 12, 24, -562, 594, "", GOLD)
         f.status:SetHeight(40)
@@ -121,15 +121,15 @@ function IOU.ShowSharedReview(id, action)
     local f = UI.sharedReview
     f.offerId, f.terms, f.state, f.action = id, offer.terms, offer.state, action
     f.sourceOverview=UI.shared and UI.shared.overview
-    local captions = {accept="Accept these terms", decline="Decline this offer", withdraw="Withdraw this proposal", close="Mark reviewed locally"}
+    local captions = {accept="Accept these terms", decline="Decline this offer", withdraw="Withdraw this proposal", close="Close request locally"}
     local terms = termsOf(offer)
-    f.title:SetText(action == "close" and "Review interrupted offer"
+    f.title:SetText(action == "close" and "Close interrupted request"
         or terms.kind == "GOLD_PAYMENT" and "Review payment"
         or terms.kind == "GOLD_CORRECTION" and "Review correction" or "Review agreement")
     f.details:SetText(literal(reviewText(offer)))
     f.content:SetHeight(math.max(356, f.details:GetStringHeight() + 16)); f.scroll:SetVerticalScroll(0)
     f.explanation:SetText(action == "close"
-        and "This only records your local review. It does not cancel or settle the other player's record. Reconcile with them before proposing a replacement."
+        and "This only records your local review. It does not accept the request, cancel or settle the other player's record. Agree with them before sending a replacement."
         or "Read the full names, amount, note and any payment history or correction target. Confirming records your decision about these exact terms; it does not verify a trade.")
     f.reason:SetShown(action == "close"); f.reasonCaption:SetShown(action == "close")
     f.reason:SetText(""); f.status:SetText(""); f.confirm:SetText(captions[action])
@@ -192,9 +192,9 @@ function IOU.ShowSharedProposal()
     f.money:Fill(0); f.note:SetText(""); f.due:SetText(""); f.status:SetText(""); f:Show()
 end
 
-local viewCaptions={inbox="Needs review",agreements="Agreements",waiting="Waiting",history="History",all="All offers"}
+local viewCaptions={inbox="Needs review",agreements="Agreements",waiting="Sent",history="History",all="All offers"}
 local emptyMessages={inbox="Nothing needs your review.",agreements="No active shared agreements.",
-    waiting="No offers waiting for the other player.",history="No completed or locally reviewed offers.",all="No shared offers yet."}
+    waiting="No sent requests awaiting a reply.",history="No completed or locally reviewed offers.",all="No shared offers yet."}
 refresh = function(overview, problem)
     local f = UI.shared
     if not f then return end
@@ -222,7 +222,7 @@ refresh = function(overview, problem)
         local wireStatus=IOU.SharedWire.GetStatus()
         local name=S.GetPeer()
         if wireStatus:sub(1,13)=="Shared peer: " and status=="Sharing with "..name..". "..wireStatus then
-            status="Enabled locally for "..name..". They must also enable sharing with your full name."
+            status="Ready for "..name..". They must also connect to you."
         end
     end
     f.status:SetText(literal(f.problem or err or status))
@@ -273,7 +273,7 @@ refresh = function(overview, problem)
     if f.detailId ~= f.selected or f.detailSource ~= f.overview or err then
         if f.detailId ~= f.selected then f.scroll:SetVerticalScroll(0) end
         f.details:SetText(literal(selected and reviewText(selected,f.overview) or err
-            or "Choose a player and enable sharing on both clients. Received offers appear under Needs review.\n\nSelecting, searching and opening reviews never accepts an offer or sends a proposal."))
+            or "Choose a player and connect on both clients. Send a request; they accept it under Needs review.\n\nYou can close this window while connected. Disconnect stops sharing."))
         f.content:SetHeight(math.max(292, f.details:GetStringHeight()+16))
         f.detailId,f.detailSource=f.selected,f.overview
     end
@@ -301,12 +301,12 @@ refresh = function(overview, problem)
     if err then hint=err
     elseif recoveryPending then hint="Open Shared backups to finish the pending recovery review."
     elseif paused then hint=enabled and "Disconnect before reviewing an interrupted offer." or "Review this interrupted offer with the other player before replacing it."
-    elseif selected and not connected then hint=enabled and "Disconnect first to enable sharing with this offer's player."
-        or "Enable for selected player, then review the full terms before accepting."
+    elseif selected and not connected then hint=enabled and "Disconnect first to connect to this request's player."
+        or "Connect to the selected player, then review the request."
     elseif received then hint="Review opens the full terms. Acceptance requires a separate confirmation."
     elseif selected and selected.state=="OFFER_OPEN" then hint="Waiting for their acceptance. Sending an offer is not an agreed debt."
     elseif selected and selected.state=="COMMITTED" then hint="Payments and corrections need the other player's acknowledgment."
-    else hint="Both players enable each other's full name. No automatic connection or acceptance." end
+    else hint="Connect to each other, then send a request. Closing this window keeps sharing connected." end
     f.primaryHint:SetText(literal(hint))
     local review = UI.sharedReview
     if review and review:IsShown() and review.sourceOverview ~= f.overview then
@@ -338,6 +338,9 @@ function IOU.UpdateSharedOverview()
     local pending,recoveryError=S.IsRecoveryPending()
     attention={count=projection and projection.needsReview or 0,recovery=pending,error=err or problem or recoveryError}
     if IOU.RenderSharedAttention then IOU.RenderSharedAttention(IOU.GetSharedAttention()) end
+    if IOU.PlayerContext and type(IOU.PlayerContext.Invalidate)=="function" then
+        IOU.PlayerContext.Invalidate(overview,err or problem)
+    end
     refresh(overview,err or problem)
     return overview,err or problem
 end
@@ -355,14 +358,14 @@ function IOU.ShowShared(peer,view)
         f.page=1
         font(f, 24, 22, -22, 650, "Shared agreements", GOLD)
         f.backups = button(f, "Shared backups", 156, 754, -24, function() IOU.ShowSharedBackup() end)
-        font(f, 12, 24, -66, 896, "Choose a player, then enable sharing on both clients. Review received offers under Needs review.\nKeep this window open while agreeing; closing it disconnects and pauses unfinished offers.", MUTED)
+        font(f, 12, 24, -66, 896, "Choose a player and connect on both clients. Send a request; they accept it under Needs review.\nYou can close this window while connected. Disconnect stops sharing.", MUTED)
         f.identity = font(f, 11, 24, -112, 896, "", GOLD)
         f.peer = edit(f, 446, 28, -136, 96)
         f.target = button(f, "Use target", 110, 492, -136, function()
             local name, err = IOU.Transport.GetUnitName("target")
             f.problem=err; if name then f.peer:SetText(name) end; refresh()
         end)
-        f.enable = button(f, "Enable for player", 178, 614, -136, function()
+        f.enable = button(f, "Connect", 178, 614, -136, function()
             f.peer:ClearFocus(); f.problem=nil
             local ok, err = S.Enable(f.peer:GetText())
             if not ok then f.problem=err end; refresh()
@@ -414,8 +417,8 @@ function IOU.ShowShared(peer,view)
         f.retry=button(f,"Retry delivery",128,798,-678,function()
             f.problem=nil; local ok,err=S.Retry(f.selected); if not ok then f.problem=err end; refresh()
         end)
-        f.closePaused=button(f,"Review paused offer",270,24,-715,function() IOU.ShowSharedReview(f.selected,"close") end)
-        f.connectSelected=button(f,"Enable for selected player",270,24,-715,function()
+        f.closePaused=button(f,"Close interrupted request",270,24,-715,function() IOU.ShowSharedReview(f.selected,"close") end)
+        f.connectSelected=button(f,"Connect selected player",270,24,-715,function()
             local offer=S.GetOffer(f.connectId)
             local terms=termsOf(offer)
             if not offer or f.selected ~= f.connectId or offer.terms ~= f.connectTerms or offer.state ~= f.connectState
@@ -445,7 +448,8 @@ function IOU.ShowShared(peer,view)
             if UI.sharedForm then UI.sharedForm:Hide() end
             if UI.sharedReview then UI.sharedReview:Hide() end
             if UI.sharedPaymentForm then UI.sharedPaymentForm:Hide() end
-            S.Disable()
+            -- Hiding the board does not end an explicitly enabled session.
+            -- Disconnect, reload and logout retain their existing stop rules.
         end)
     end
     local f=UI.shared

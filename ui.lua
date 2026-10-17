@@ -94,7 +94,8 @@ local function amount(entry, value)
     return tostring(value) .. " x " .. labelText(entry)
 end
 local function dateText(stamp) return date("%d %b %Y, %H:%M", stamp) end
-local function options() return {kind = UI.kind, sort = UI.sort, now = time()} end
+local function options() return {kind = UI.kind, sort = UI.sort, now = time(), exactPlayer = UI.exactPlayer} end
+local function searchText() return UI.exactPlayer and "" or UI.search:GetText() end
 local function font(parent, size, x, y, width, text, color)
     local fs = parent:CreateFontString(nil, "OVERLAY")
     fs:SetFont("Fonts\\FRIZQT__.TTF", size, "")
@@ -263,6 +264,7 @@ function IOU.RenderSharedAttention(attention)
         if attention.recovery or attention.error then caption = "Shared (!)"
         elseif attention.count > 0 then caption = "Shared (" .. attention.count .. ")" end
         UI.sharedButton:SetText(caption)
+        UI.sharedButton:SetShown(attention.recovery or attention.error or attention.count > 0)
     end
     if IOU.RenderLauncherAttention then IOU.RenderLauncherAttention(attention) end
 end
@@ -290,7 +292,7 @@ local function buildMain()
     UI.character = font(f, 12, 24, -55, 600, "", MUTED)
     UI.sharedButton = button(f, "Shared", 94, 486, -27, IOU.OpenSharedAttention)
     button(f, "Settings", 104, 590, -27, function() IOU.ShowSettings() end)
-    button(f, "Backups", 98, 704, -27, function() IOU.ShowBackup("export") end)
+    button(f, "Target IOUs", 98, 704, -27, function() IOU.ShowTargetRecords() end)
     button(f, "+ New IOU", 114, 812, -27, function() IOU.ShowAdd() end)
     UI.cards = {}
     for index, title in ipairs({"OWED TO YOU", "YOU OWE"}) do
@@ -312,6 +314,8 @@ local function buildMain()
     font(f, 11, 523, -177, 110, "Search", MUTED)
     UI.search = edit(f, 260, 630, -168, 200)
     UI.search:SetScript("OnTextChanged", function()
+        if UI.settingContextSearch then return end
+        UI.exactPlayer = nil
         UI.page, UI.selected = 1, nil
         IOU.Refresh()
     end)
@@ -384,9 +388,9 @@ function IOU.Refresh(reset)
     local db = IOU.GetLedger()
     if not db then return end
     if reset then UI.selected, UI.page = nil, 1 end
-    UI.character:SetText(literal(IOU.Character()) .. "  /  Your personal agreement book")
+    UI.character:SetText(literal(IOU.Character()) .. "  /  Who owes what")
     for index, direction in ipairs({"owed", "owe"}) do
-        local sum = L.Summary(db, direction, UI.search:GetText(), options())
+        local sum = L.Summary(db, direction, searchText(), options())
         UI.cards[index].caption:SetText(UI.cards[index].title .. ((UI.search:GetText() ~= "" or UI.kind ~= "all") and " / FILTERED" or ""))
         UI.cards[index].value:SetText(L.FormatMoney(sum.money))
         UI.cards[index].counts:SetText(sum.active .. " open IOUs\n" .. sum.items .. " item / " .. sum.favors .. " favor\n" .. (sum.overdue or 0) .. " overdue")
@@ -394,7 +398,7 @@ function IOU.Refresh(reset)
     for tab, b in pairs(UI.tabs) do b:SetEnabled(UI.tab ~= tab) end
     for kind, b in pairs(UI.typeButtons) do b:SetEnabled(UI.kind ~= kind) end
     UI.sortButton:SetText("Sort: " .. UI.sort)
-    local entries = L.List(db, UI.tab, UI.search:GetText(), options())
+    local entries = L.List(db, UI.tab, searchText(), options())
     local pages = math.max(1, math.ceil(#entries / 5))
     UI.page = math.max(1, math.min(UI.page, pages))
     local selected
@@ -428,7 +432,7 @@ function IOU.Refresh(reset)
     UI.cancel:SetEnabled(selected ~= nil and (cancelled or L.Balance(selected) > 0))
     UI.cancel:SetText(cancelled and "Restore IOU" or "Cancel IOU")
     if not selected then
-        UI.peer:SetText("Your agreement book")
+        UI.peer:SetText("Your IOUs")
         UI.context:SetText("Select an IOU to see its history.")
         UI.balance:SetText("")
         UI.due:SetText("")
@@ -574,10 +578,11 @@ local function showMain()
 end
 
 local function focusEntry(entry)
+    if UI.exactPlayer and IOU.PlayerSummary.NameKey(entry.player) ~= UI.exactPlayer then UI.exactPlayer = nil end
     UI.tab = (L.Balance(entry) == 0 or L.Status(entry) == "cancelled") and "history" or entry.direction
     if UI.kind ~= "all" and UI.kind ~= entry.kind then UI.kind = "all" end
     UI.selected, UI.page = entry.id, 1
-    local entries = L.List(IOU.GetLedger(), UI.tab, UI.search:GetText(), options())
+    local entries = L.List(IOU.GetLedger(), UI.tab, searchText(), options())
     local matched
     for index, e in ipairs(entries) do
         if e.id == entry.id then UI.page = math.ceil(index / 5); matched = true; break end
@@ -590,6 +595,39 @@ local function focusEntry(entry)
         end
     end
     IOU.Refresh()
+end
+
+function IOU.ShowPlayerRecords(name)
+    local key = IOU.PlayerSummary.NameKey(name)
+    if not key or not IOU.Initialize() then return end
+    showMain()
+    UI.search:SetText("")
+    UI.exactPlayer, UI.kind, UI.page, UI.selected = key, "all", 1, nil
+    local db = IOU.GetLedger()
+    if #L.List(db, "owed", nil, options()) > 0 then UI.tab = "owed"
+    elseif #L.List(db, "owe", nil, options()) > 0 then UI.tab = "owe"
+    else
+        local summary = IOU.PlayerContext.GetSummary(name)
+        if summary and (summary.shared.owed.money > 0 or summary.shared.owe.money > 0) then
+            IOU.ShowShared(name, "agreements")
+            UI.shared.search:SetText(name)
+            return
+        end
+        UI.tab = #L.List(db, "history", nil, options()) > 0 and "history" or "owed"
+    end
+    IOU.Refresh()
+    -- Leave the exact player's name visible; changing it clears the exact filter.
+    UI.settingContextSearch = true
+    UI.search:SetText(name)
+    UI.exactPlayer = key
+    UI.settingContextSearch = nil
+    IOU.Refresh()
+end
+
+function IOU.ShowTargetRecords()
+    local name, err = IOU.PlayerContext.UnitName("target")
+    if not name then IOU.Message(err or "Target a player first."); return end
+    IOU.ShowPlayerRecords(name)
 end
 
 local function installLinkCapture()
@@ -623,14 +661,22 @@ local function installLinkCapture()
     end
 end
 
-function IOU.ShowAdd()
+function IOU.ShowAdd(player)
     showMain()
     if not UI.add then
         local f = window("IOUAddWindow", 506, 584)
         UI.add = f
         font(f, 21, 22, -21, 440, "New IOU", GOLD)
-        font(f, 11, 24, -64, 420, "Player (include realm when needed)", MUTED)
-        f.player = edit(f, 445, 29, -84, 80)
+        font(f, 11, 24, -64, 420, "Player's full name", MUTED)
+        f.player = edit(f, 320, 29, -84, 80)
+        f.target = button(f, "Use target", 114, 362, -84, function()
+            local name, err = IOU.PlayerContext.UnitName("target")
+            if not name or #name > L.MAX_PLAYER then
+                f.error:SetText(literal(err or "That full name is too long for a personal IOU.")); return
+            end
+            f.player:SetText(name); f.error:SetText("")
+            if f.kind == "money" then f.money[1]:SetFocus() else f.quantity:SetFocus() end
+        end)
         f.direction = "owed"
         f.dirButtons = {}
         for index, choice in ipairs({{"owed", "Owed to me"}, {"owe", "I owe"}}) do
@@ -658,6 +704,7 @@ function IOU.ShowAdd()
                 f.moneyGroup:SetShown(key == "money")
                 f.unitGroup:SetShown(key ~= "money")
                 f.labelCaption:SetText(key == "item" and "Item name or shift-click an item here" or "Favor / unit (e.g. minutes of enchanting help)")
+                if key == "money" then f.money[1]:SetFocus() else f.quantity:SetFocus(); f.quantity:HighlightText() end
             end)
         end
         font(f, 11, 25, -337, 440, "Due date (optional, YYYY-MM-DD)", MUTED)
@@ -683,12 +730,16 @@ function IOU.ShowAdd()
     end
     installLinkCapture()
     local f = UI.add
-    f.player:SetText(""); f.note:SetText(""); f.quantity:SetText("1"); f.label:SetText(""); f.due:SetText(""); f.money:Fill(0)
+    if player == nil then player = IOU.PlayerContext.UnitName("target") end
+    local valid = IOU.PlayerSummary.NameKey(player)
+    if not valid or #player > L.MAX_PLAYER then player = "" end
+    f.player:SetText(player); f.note:SetText(""); f.quantity:SetText("1"); f.label:SetText(""); f.due:SetText(""); f.money:Fill(0)
     f.error:SetText(""); f.direction, f.kind = "owed", "money"
     for key, b in pairs(f.dirButtons) do b:SetEnabled(key ~= f.direction) end
     for key, b in pairs(f.kindButtons) do b:SetEnabled(key ~= f.kind) end
     f.moneyGroup:Show(); f.unitGroup:Hide()
-    f:Show(); f.player:SetFocus()
+    f:Show()
+    if player ~= "" then f.money[1]:SetFocus() else f.player:SetFocus() end
 end
 
 function IOU.ShowEdit()
@@ -927,7 +978,7 @@ end
 function IOU.ShowSettings()
     showMain()
     if not UI.settings then
-        local f = window("IOUSettingsWindow", 476, 358)
+        local f = window("IOUSettingsWindow", 476, 490)
         UI.settings = f
         font(f, 21, 22, -22, 410, "IOU settings", GOLD)
         font(f, 11, 24, -63, 420, "These preferences apply across your characters.", MUTED)
@@ -937,16 +988,32 @@ function IOU.ShowSettings()
         f.reminders = button(f, "", 260, 24, -139, function()
             IOU.GetSettings().reminders = not IOU.GetSettings().reminders; IOU.ShowSettings()
         end)
-        button(f, "Reset window position", 260, 24, -181, function() IOU.ResetPosition() end)
-        button(f, "Connection test", 260, 24, -223, function()
+        f.tooltips = button(f, "", 260, 24, -181, function()
+            IOU.GetSettings().playerTooltips = not IOU.GetSettings().playerTooltips
+            IOU.PlayerContext.Invalidate(); IOU.ShowSettings()
+        end)
+        f.trade = button(f, "", 260, 24, -223, function()
+            IOU.GetSettings().tradeReminders = not IOU.GetSettings().tradeReminders
+            IOU.PlayerContext.Invalidate(); IOU.ShowSettings()
+        end)
+        button(f, "Reset window position", 260, 24, -265, function() IOU.ResetPosition() end)
+        button(f, "Shared agreements", 200, 24, -307, function()
+            f:Hide(); IOU.OpenSharedAttention()
+        end)
+        button(f, "Backups", 200, 242, -307, function()
+            f:Hide(); IOU.ShowBackup("export")
+        end)
+        button(f, "Connection test", 260, 24, -349, function()
             f:Hide(); IOU.ShowConnectionTest()
         end)
-        font(f, 11, 24, -274, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour agreements remain separate for each character.", MUTED)
-        font(f, 10, 24, -329, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
+        font(f, 11, 24, -400, 420, "Assign 'Open / close IOU ledger' in the game's Key Bindings.\nYour IOUs remain separate for each character.", MUTED)
+        font(f, 10, 24, -461, 420, "IOU " .. IOU.VERSION .. " / PhilForever", MUTED)
     end
     local f = UI.settings
     f.minimap:SetText("Minimap button: " .. (IOU.GetSettings().minimap and "shown" or "hidden"))
     f.reminders:SetText("Login reminders: " .. (IOU.GetSettings().reminders and "on" or "off"))
+    f.tooltips:SetText("Player tooltips: " .. (IOU.GetSettings().playerTooltips and "on" or "off"))
+    f.trade:SetText("Trade reminders: " .. (IOU.GetSettings().tradeReminders and "on" or "off"))
     f:Show()
 end
 

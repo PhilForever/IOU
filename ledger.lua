@@ -384,9 +384,19 @@ function Ledger.Restore(db, id, reason, timestamp)
     return lifecycle(db, id, reason, timestamp, true)
 end
 
+local function identityKey(value)
+    if type(value) ~= "string" or #value > 96 or value:find("[%z\001-\031\127|]") then return nil end
+    value = value:gsub(" +", " "):match("^ *(.-) *$")
+    if value == "" then return nil end
+    return (value:gsub("[A-Z]", function(letter) return string.char(letter:byte() + 32) end))
+end
 local function matches(entry, query, options)
     local kind = options and options.kind
     if kind and kind ~= "all" and kind ~= entry.kind then return false end
+    if options and options.exactPlayer ~= nil then
+        local key = identityKey(options.exactPlayer)
+        if not key or identityKey(entry.player) ~= key then return false end
+    end
     if query == nil or query == "" then return true end
     if type(query) ~= "string" then return false end
     query = query:lower()

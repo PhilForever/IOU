@@ -153,7 +153,7 @@ test("workflow overview validates once and returns detached offers and derived b
     equal(#state.transportSent,0)
 end)
 
-test("workflow first opening selects useful review, agreement, waiting and history views",function()
+test("workflow first opening selects useful review, agreement, sent and history views",function()
     for _,case in ipairs({
         {id="incoming",incoming=true,expected="inbox"},
         {id="agreed",state="agreed",expected="agreements"},
@@ -167,6 +167,105 @@ test("workflow first opening selects useful review, agreement, waiting and histo
         assert(not state.api.SharedService.IsEnabled())
         equal(#state.transportSent,0)
     end
+end)
+
+test("workflow closing Shared hides drafts and reviews without changing the selected connection or consent",function()
+    local state=newSession(); local api=state.api
+    seed(state,{{id="incoming",incoming=true},{id="partial",partial=3500}})
+    api.ShowShared("Birch Vale","all")
+    local board=api.UI.shared
+    equal(board.enable:GetText(),"Connect")
+    equal(board.filterButtons.waiting:GetText(),"Sent (0)")
+    state.click(board.enable)
+    api.ShowSharedProposal()
+    local proposal=api.UI.sharedForm
+    proposal.note:SetText("Unsent draft")
+    api.ShowSharedPayment("partial","payment")
+    local payment=api.UI.sharedPaymentForm
+    assert(payment and payment:IsShown())
+    api.ShowSharedReview("incoming","accept")
+    local review=api.UI.sharedReview
+    assert(proposal:IsShown() and review:IsShown())
+    proposal.note:SetFocus()
+    local before=copy(api.SharedService.GetStore())
+    board:Hide()
+    assert(not proposal:IsShown() and not payment:IsShown() and not review:IsShown())
+    assert(not proposal.note:HasFocus() and not board.peer:HasFocus() and not board.search:HasFocus())
+    assert(api.SharedService.IsEnabled())
+    equal(api.SharedService.GetPeer(),"Birch Vale")
+    assert(same(before,api.SharedService.GetStore()),"hiding changed retained consent or balances")
+    equal(api.SharedService.GetOffer("incoming").state,"OFFER_RECEIVED")
+    equal(api.SharedService.GetOffer("incoming").consent,"NONE")
+    equal(#state.transportSent,0)
+end)
+
+test("workflow a hidden Shared board receives requests and can later accept them without reconnecting",function()
+    local state=newSession(); local api=state.api
+    api.ShowShared("Birch Vale")
+    local board=api.UI.shared
+    state.click(board.enable); board:Hide()
+    deliverProposal(state,"hidden-incoming")
+    assert(not board:IsShown(),"an incoming request opened the hidden board")
+    equal(api.GetSharedAttention().count,1)
+    local received=assert(api.SharedService.GetOffer("hidden-incoming"))
+    equal(received.state,"OFFER_RECEIVED"); equal(received.consent,"NONE")
+    state.advance(600)
+    equal(api.SharedService.GetOffer("hidden-incoming").state,"OFFER_RECEIVED","time spent outside the board paused the request")
+    assert(api.SharedService.IsEnabled())
+    api.ShowShared(nil,"inbox")
+    assert(board.accept.enabled)
+    state.click(board.accept)
+    local review=api.UI.sharedReview
+    assert(review:IsShown() and review.confirm.enabled)
+    board:Hide()
+    equal(api.SharedService.GetOffer("hidden-incoming").consent,"NONE","closing a review accepted the request")
+    api.ShowShared(nil,"inbox"); state.click(board.accept); state.click(review.confirm)
+    equal(api.SharedService.GetOffer("hidden-incoming").state,"ACCEPT_PENDING")
+    equal(api.SharedService.GetOffer("hidden-incoming").terms,received.terms)
+end)
+
+test("workflow explicit Disconnect and shared off still pause unfinished requests and stop queued packets",function()
+    for _,method in ipairs({"button","slash"}) do
+        local state=newSession(); local api=state.api
+        api.ShowShared("Birch Vale")
+        local board=api.UI.shared
+        state.click(board.enable); state.click(board.propose)
+        local form=api.UI.sharedForm
+        form.money:Fill(10000); state.click(form.send)
+        local offer=api.SharedService.List()[1]
+        equal(offer.state,"OFFER_OPEN")
+        board:Hide(); assert(api.SharedService.IsEnabled())
+        if method=="button" then
+            api.ShowShared(); state.click(board.stop)
+        else state.env.SlashCmdList.IOU("shared off") end
+        assert(not api.SharedService.IsEnabled())
+        local paused=api.SharedService.GetOffer(offer.offerId)
+        equal(paused.state,"PAUSED"); equal(paused.consent,"PROPOSE")
+        equal(paused.messages.accept,nil); equal(paused.messages.commit,nil)
+        state.advance(60); equal(#state.transportSent,0,"explicit disconnection left outgoing packets queued")
+    end
+end)
+
+test("workflow closing an interrupted request records no acceptance or agreement",function()
+    local state=newSession(); local api=state.api
+    seed(state,{{id="paused-incoming",incoming=true,paused=true}})
+    api.ShowShared(nil,"inbox")
+    local board=api.UI.shared
+    assert(board.closePaused.enabled)
+    state.click(board.closePaused)
+    local review=api.UI.sharedReview
+    equal(review.title:GetText(),"Close interrupted request")
+    equal(review.confirm:GetText(),"Close request locally")
+    contains(review.explanation:GetText(),"does not accept the request")
+    local before=copy(api.SharedService.GetStore())
+    state.click(review.confirm)
+    local offer=api.SharedService.GetOffer("paused-incoming")
+    equal(offer.state,"PAUSED"); equal(offer.consent,"NONE")
+    assert(offer.localClosed)
+    equal(offer.messages.accept,nil); equal(offer.messages.commit,nil)
+    assert(same(before,api.SharedService.GetStore()),"closing invented acceptance or protocol history")
+    equal(#state.transportSent,0)
+    equal(api.GetSharedAttention().count,0)
 end)
 
 test("workflow views separate consent waiting, active agreements, completed events and local reviews",function()

@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.5.0"
+IOU.VERSION = "0.6.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 
@@ -65,6 +65,8 @@ function IOU.Initialize()
     local settings = IOUDB.settings
     if type(settings.minimap) ~= "boolean" then settings.minimap = true end
     if type(settings.reminders) ~= "boolean" then settings.reminders = true end
+    if type(settings.playerTooltips) ~= "boolean" then settings.playerTooltips = true end
+    if type(settings.tradeReminders) ~= "boolean" then settings.tradeReminders = true end
     if type(settings.minimapAngle) ~= "number" or settings.minimapAngle ~= settings.minimapAngle
         or settings.minimapAngle < 0 or settings.minimapAngle > 360 then settings.minimapAngle = 225 end
     local anchors = {TOPLEFT=true, TOP=true, TOPRIGHT=true, LEFT=true, CENTER=true,
@@ -126,6 +128,7 @@ local function mutate(method, ...)
     if not snapshot then return nil, problem end
     IOUDB.characters[character] = draft
     ledger = draft
+    if IOU.PlayerContext then IOU.PlayerContext.Invalidate() end
     if IOU.Refresh then IOU.Refresh() end
     return result
 end
@@ -176,6 +179,7 @@ function IOU.ReplaceLedger(candidate)
     IOUDB.recovery[character] = previous
     IOUDB.characters[character] = copy
     ledger = copy
+    if IOU.PlayerContext then IOU.PlayerContext.Invalidate() end
     if IOU.Refresh then IOU.Refresh(true) end
     return true
 end
@@ -220,6 +224,7 @@ local function slash(command)
     elseif command == "test" then IOU.ShowConnectionTest()
     elseif command:match("^test%s+") then IOU.ShowConnectionTest(original:match("^%S+%s+(.+)$"))
     elseif command == "add" then IOU.ShowAdd()
+    elseif command == "target" then IOU.ShowTargetRecords()
     elseif command == "export" then IOU.ShowBackup("export")
     elseif command == "import" then IOU.ShowBackup("import")
     elseif command == "settings" then IOU.ShowSettings()
@@ -231,7 +236,7 @@ local function slash(command)
         IOU.Message("Login reminders " .. (IOU.GetSettings().reminders and "on." or "off."))
     elseif command == "help" then
         IOU.Message("/iou - ledger; /iou add - new agreement; /iou export - backup; /iou import - restore.")
-        IOU.Message("/iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
+        IOU.Message("/iou target - target's IOUs; /iou settings; /iou resetpos; /iou minimap show|hide; /iou reminders on|off.")
         IOU.Message("/iou test [full player name] - connection test; /iou test stop - stop listening.")
         IOU.Message("/iou shared [full player name] - shared agreements; /iou shared off - disconnect.")
     else IOU.Message("Unknown command. Use /iou help.") end
@@ -250,6 +255,7 @@ events:SetScript("OnEvent", function()
     end
     if IOU.UpdateLauncher then IOU.UpdateLauncher() end
     if IOU.UpdateSharedOverview then IOU.UpdateSharedOverview() end
+    if IOU.PlayerContext then IOU.PlayerContext.Initialize() end
     IOU.Message("v" .. IOU.VERSION .. " loaded. /iou opens your ledger.")
     if IOU.GetSettings().reminders then
         local options = {now = time()}

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — 2026-10-17
+
+- Put personal gold and crafting-item records first. New IOUs can use the targeted player's full name; the main header offers Target IOUs, while Shared and optional backups remain available in Settings.
+- Added player-hover and trade reminders for exact full-name matches. Gold directions and literal item/favor quantities stay separate; personal notes and acknowledged Shared balances are labeled separately to avoid counting the same debt twice.
+- Kept trade reminders read-only: they do not offer gold, accept a trade, verify delivery, or record repayments automatically. Tooltip and trade reminders can be disabled in Settings.
+- Closing the Shared board now leaves its explicitly enabled player session running. Disconnect, logout, reload, and actual transport failures retain their existing stop/pause behavior. Closing a review never accepts its terms.
+- Renamed the sender's Waiting view to Sent. Incoming offers appear under Needs review on the recipient's client; these different views describe the same pending offer.
+- Kept attention counts and recovery notices available without putting connection and backup controls ahead of ordinary bookkeeping. Existing ledgers, Shared evidence, and backup formats are preserved.
+
+Validation: read-only player-summary and client-context regressions, complete-addon workflow checks, existing financial/consent/recovery simulations, publisher checks, and package validation. The user reported successful 0.5.0 backup checks; supplied before/after exports validate and preserve prior history, while the new test proposal remains interrupted in those snapshots. Live 0.6.0 tooltip, trade, and close-window verification remain pending. **Fully restart after this update because it adds addon files.** Published through the regular Release channel.
+
 ## 0.5.0 — 2026-10-17
 
 - Split the Shared board into Needs review, Agreements, Waiting, History, and All offers, with global counts, literal name/note search, stable selection, and pagination.

@@ -2,7 +2,20 @@
 
 Target client: **WoW: Forever**, interface `16001`.
 
-Record the addon version, client build, date, resolution, UI scale, and other addons enabled when reporting results. Use invented names and disposable agreements. If testing an existing character, export its ledger first and retain the text privately.
+Use disposable test records with a consenting friend. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
+
+## Short 0.6.0 check
+
+Fully restart both clients once because this update adds files. No gold transfer or connection diagnostic is required.
+
+1. Target your friend, open `/iou`, and click **+ New IOU**. Their full name should be filled. Save **Owed to me → 10g**, leaving notes and date blank. This is a personal record; the friend does not need to enable sharing.
+2. Add **I owe → Items → 5 Linen Cloth** for the same player. A typed label is enough; optionally try focusing it and Shift-clicking a real item link.
+3. Hover the player. Expect a readable reminder that they owe you **10g** and you owe them **5 Linen Cloth**. An NPC or a different full name must not inherit it. **Target IOUs** should find the target's records.
+4. Open a trade with that player. Expect the same separate reminders. Close/cancel the trade: neither record should change. Toggle player tooltips and trade reminders off and back on in Settings to check both preferences.
+5. For Shared, both open **Settings → Shared agreements**, choose each other, and click **Connect**. Send a fresh disposable **1g** proposal with **They will owe me**, then both close the Shared board. Reopen it: the selected session should remain connected, with the proposal under **Sent** for the sender and **Needs review** for the recipient. It should remain unaccepted until the recipient reviews and clicks **Accept these terms**.
+6. After acceptance/acknowledgment, the Shared reminder should be labeled separately from the personal 10g record; they must not be combined into an 11g total. Use **Disconnect** explicitly, then `/reload`: personal records and accepted Shared history should remain, while sharing should be off.
+
+Send a short result: **personal creation, hover, trade, close-board Shared acceptance, and reload: pass/fail**. Include one hover screenshot and one trade screenshot. If a step fails, give its number, the exact visible status or full Lua error, and a screenshot. No new export is needed unless investigating a data discrepancy; keep exports and player information private.
 
 ## Validation record
 
@@ -23,16 +36,16 @@ Record the addon version, client build, date, resolution, UI scale, and other ad
 | 0.3.2 live reports | Two private client reports and user screenshots on 16 October 2026, Forever 1.60.1/build 70425/interface 16001 | All four exact diagnostic echoes succeeded, including Norwegian UTF-8 and 239/240-byte packets. Shared screenshots show acknowledged partial payment, correction using the default reason, and final zero/settled balance. A measured focus-latency result and full restart of Shared data were not explicitly reported. |
 | 0.4.0 | Bounded Shared backup codec, service recovery, and complete-addon UI simulations plus existing checks | Exercises same-character restore, add-missing union, conflicts, retained closure evidence, capacity, stale bindings, recovery gate across reload, explicit decisions, and zero recovery traffic. Live backup/recovery remains pending. |
 | 0.5.0 | Pure presentation and complete-addon workflow checks plus existing suites | Exercises classified views, search/global counts, acknowledged remaining amounts, selection/pagination, explicit selected-peer enabling, stale guards, passive notices, incoming focus/scroll preservation, and detached snapshot rendering. Live workflow and prior recovery verification remain pending. |
+| 0.5.0 live feedback | Private before/after exports, screenshots, and user report on 17 October 2026 | User reported successful backup checks with the existing settled balance and record count retained. Supplied snapshots validate and preserve prior records; they retain the new test proposal as interrupted rather than accepted. Sender Waiting versus recipient Needs review was expected. Board closure/reconnection and paused-offer review were confusing; no completed new financial sequence is inferred from these snapshots. |
+| 0.6.0 | Pure exact-player summary, client-context, and workflow checks plus existing suites | Adds personal-first navigation, target-prefilled creation, read-only tooltip/trade reminders, and window-close session retention. Live rendering, exact client identity hooks, trade-frame integration, and the revised Shared flow remain pending. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
 
 For shared communication, follow the [connection test guide](connection-test.md). Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Capture both private reports, including failures. Verify closing the window or using `/iou test stop` stops traffic, and that listening is off after reload. Personal records must remain unchanged.
 
-The [Shared guide](shared-agreements.md) describes the player flow. The 0.3.2 pilot covered payment/correction/settlement; broader checks still include both debtor directions, pending acknowledgment, stale reviews, decline/withdraw races, reload at each handshake step, and full restart of agreed records. Check reduced UI scale and long Unicode notes. Personal totals and personal export/import must remain independent.
+The [Shared guide](shared-agreements.md) describes the player flow. The 0.3.2 pilot covered payment/correction/settlement. The maintainer cases below retain broader checks for both directions, pending acknowledgment, stale reviews, decline/withdraw races, reduced UI scale, and long Unicode notes. They are a regression reference, not a required player test script.
 
-For 0.4.0, fully restart once to load the new files. Open **Shared backups**, copy an export, preview that same export, and compare the settled balance and history. Stage it, verify sharing turns off, close/reload/reopen, then choose **Restore missing history**. The existing records and settled balance must remain unchanged; enabling sharing must remain explicit. A second preview should not propose duplicate history. **Keep current records** should also finish a staged review with no changes. Both retained comparison snapshots should copy successfully. Do not delete live SavedVariables to test missing-record recovery; use disposable test characters/data for loss simulations.
-
-For 0.5.0, fully restart to load the new presentation file. Verify the settled pilot agreement appears under History and its completed payment/correction records keep their event amounts. Search a note and clear it; tab counts should stay global. With a peer enabled, leave a specific view/query and detail scroll selected while they send a new proposal: the review count should increase without changing your view or focus. Use the Shared button or Shift-left-click on the minimap to open Needs review; acceptance must still require the separate full-term confirmation. Check that Waiting changes to Agreements/History after acknowledgment. Disconnect, select a retained agreed offer, and use Enable for selected player; selecting a different peer while enabled must not switch the session. Pending recovery must block enabling from both buttons. Check normal/reduced UI scales for all tabs, paging, status, and action rows.
+Optional recovery regression: preview your own Shared export, stage it, reload, and restore missing history or keep current records. Existing records/counts/balances must remain unchanged and sharing stays off. Do not delete live SavedVariables to simulate loss; use disposable harness data for missing-record cases.
 
 ## Live regression cases
 

@@ -1,8 +1,10 @@
 # Shared Agreements development
 
-Version **0.5.0** adds `IOU.SharedView` and an event-driven Shared board to the existing codec, state engine, payment domain, backup/recovery, wire, and consent UI. The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps.
+Version **0.6.0** adds exact-player debt summaries and read-only tooltip/trade integration, with personal records as the main workflow. The existing codec, state engine, payment domain, backup/recovery, wire, and consent UI are retained. Closing the Shared board now hides the UI without disabling the explicitly selected session. Explicit disconnect, logout/reload, recovery gates, and transport failure keep the existing stop/pause behavior.
 
-The personal ledger remains separate. See the [player guide](shared-agreements.md) and [protocol specification](shared-agreements-protocol.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement; 0.4.0 recovery remains pending an in-game check.
+The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps. Displaying a reminder, opening a trade, targeting a player, and closing a decision review never mutate a balance or accept Shared terms.
+
+The personal ledger remains separate. See the [player guide](shared-agreements.md) and [protocol specification](shared-agreements-protocol.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement. The user reported successful backup checks on 0.5.0; supplied snapshots preserve existing history but retain the new test offer as interrupted. Live 0.6.0 context hooks and close-window behavior remain unverified.
 
 ## State API
 
@@ -100,7 +102,7 @@ python tools/test_iou.py
 
 `tools/test_shared.lua` covers the codec and two independent stores, dropped and duplicated messages, reordered terminal outcomes, spoofed roles and senders, changed terms, bounded records, and loss of local consent. It also verifies that the foundation cannot invoke network or game APIs and that input stores remain unchanged on rejection.
 
-Next work includes broader agreement kinds and richer peer reconciliation. Keep live evidence separate from simulations; the completed 0.3.2 pilot does not verify 0.4.0 recovery, the 0.5.0 board, or all client/persistence conditions.
+Next work should follow the short player workflow: quick gold/item records, readable context reminders, and optional Shared acknowledgment. Broader Shared kinds and peer reconciliation remain future work. Keep live evidence separate from simulations; existing pilots do not establish the new client hooks or all persistence conditions.
 
 ## Shared payment domain
 
@@ -144,3 +146,15 @@ The service reuses derived views only within an operation and caches at most two
 `IOU.UpdateSharedOverview` runs on login, explicit board opening, and `OnSharedChanged`. It updates passive attention and an existing board without constructing/showing windows. `GetSharedAttention()` returns detached scalar state without reading storage. Search/filter render from the board snapshot, including parent/payment details and action availability; confirmation methods still fetch and validate live records. A visible decision review rechecks when its source/session changes, and again on confirmation. No polling or automatic transport is added.
 
 `IOU.ShowShared(peer,view)` optionally opens a specific view without enabling communication. `SelectSharedOffer(id,problem)` is an explicit UI action used after sending, clears search before binding selection, chooses the offer's category, and reveals its page. Ordinary incoming changes preserve a chosen filter, query, selection, focus, and scroll. An offer that leaves the current category can disappear from that view; its destination count remains visible. Selected-peer enabling binds exact ID, terms, state, and peer, and refuses paused/local-closed offers, active-peer replacement, or pending recovery.
+
+The presentation key `waiting` is retained for compatibility; its player-facing caption is **Sent**. A proposal belongs there on the sender's client and under **Needs review** on the recipient's client. Board closure no longer calls `SharedService.Disable`; it still closes child forms and does not submit them. The main Shared control is attention-only, with ordinary access through Settings and commands. Diagnostic-window closure keeps its independent stop behavior.
+
+## Exact-player reminders
+
+`PlayerSummary.NameKey(name)` normalizes repeated ASCII spaces and ASCII letter case. It rejects control characters, chat markup, oversized names, and secret values. Surnames, hyphens, realm suffixes, and UTF-8 bytes are preserved; there is no substring, first-name, or realm inference.
+
+`PlayerSummary.Build(personalLedger,sharedOverviewOrNil,fullName)` returns `{player,personal,shared,count,sharedError?}`. Each source has separate `owed` and `owe` blocks containing whole-copper `money`, plus sorted `items` and `favors` arrays of `{label,quantity}`. Count is the number of contributing personal records and effective original Shared agreements, not the number of display rows. Identical literal item/favor labels aggregate only within the same source, direction, and kind; different item-link bytes remain separate.
+
+The projection validates the personal ledger and replays each matching record's retained history. Settled/cancelled records contribute nothing. Shared data comes from the detached validated overview: only committed original gold obligations with an effective confirmed balance contribute. Payment/correction child offers never count as separate debts. Pending children leave the existing confirmed parent balance intact. Invalid Shared data returns no partial Shared totals and sets `sharedError`, while a valid personal summary remains usable. Invalid personal data rejects the summary.
+
+The tooltip/trade renderer labels personal and Shared sources separately rather than adding potentially duplicate records. It escapes literal labels before native rendering. Trade events are presentation triggers only; the integration cannot alter offered items/gold, accept trades, or append repayments. Client name APIs and trade hooks require live verification on the target build; unsupported or secret identity values must not produce a guessed match.

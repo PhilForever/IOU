@@ -897,7 +897,7 @@ local function coreSession(config)
         end
     end
     local api={}
-    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua","shared_view.lua",
+    for _, name in ipairs({"ledger.lua","codec.lua","shared_codec.lua","shared.lua","shared_payments.lua","shared_backup.lua","shared_view.lua","player_summary.lua",
         "core.lua","transport.lua","shared_wire.lua","shared_service.lua"}) do
         local chunk=assert(loadstring(assert(IOU_SOURCES[name]), "@IOU/" .. name))
         setfenv(chunk, env); chunk("IOU",api)
@@ -910,6 +910,8 @@ local function coreSession(config)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_payment_ui.lua"]),"@IOU/shared_payment_ui.lua"))
         setfenv(chunk,env); chunk("IOU",api)
         chunk=assert(loadstring(assert(IOU_SOURCES["shared_backup_ui.lua"]),"@IOU/shared_backup_ui.lua"))
+        setfenv(chunk,env); chunk("IOU",api)
+        chunk=assert(loadstring(assert(IOU_SOURCES["player_context.lua"]),"@IOU/player_context.lua"))
         setfenv(chunk,env); chunk("IOU",api)
     end
     if config.launcher then
@@ -1911,7 +1913,7 @@ test("a persisted proposal with failed enqueue closes its draft and retries the 
     end
 end)
 
-test("closing shared UI stops queued packets, pauses consent and keeps reload and characters isolated", function()
+test("explicit disconnect stops queued packets, pauses consent and keeps reload and characters isolated", function()
     local state=coreSession({ui=true,shared=true}); local api=state.api
     api.ShowShared("Remote Peer"); local board=api.UI.shared
     state.click(board.enable); state.click(board.propose)
@@ -1919,6 +1921,7 @@ test("closing shared UI stops queued packets, pauses consent and keeps reload an
     local offer=api.SharedService.List()[1]
     equal(offer.state,"OFFER_OPEN"); equal(#state.transportSent,0)
     api.ShowSharedReview(offer.offerId,"withdraw")
+    state.click(board.stop)
     board.peer:SetFocus(); board.peer.scripts.OnEscapePressed(board.peer)
     assert(not board:IsShown() and not form:IsShown() and not api.UI.sharedReview:IsShown())
     assert(not api.SharedService.IsEnabled())
@@ -2107,7 +2110,61 @@ test("two complete addon sessions agree through framed whispers only after recip
     a.api.SelectSharedOffer(id)
     assert(a.api.UI.shared.details:GetText():find("their IOU acknowledged",1,true))
     a.api.UI.shared:Hide(); b.api.UI.shared:Hide()
-    assert(not a.api.SharedService.IsEnabled() and not b.api.SharedService.IsEnabled())
+    assert(a.api.SharedService.IsEnabled() and b.api.SharedService.IsEnabled())
+    a.api.ShowPlayerRecords("Birch Vale")
+    assert(a.api.UI.shared:IsShown()); equal(a.api.UI.shared.filter,"agreements")
+    equal(a.api.UI.shared.search:GetText(),"Birch Vale"); equal(a.api.UI.shared.selected,id)
+    assert(a.api.SharedService.Disable()); assert(b.api.SharedService.Disable())
+end)
+
+test("target capture fills the exact full name and goes straight to the amount", function()
+    local state=coreSession({ui=true,target="Bjørn   Blue-Berry"}); local api=state.api
+    assert(api.Initialize()); api.ShowAdd()
+    local form=api.UI.add
+    equal(form.player:GetText(),"Bjørn Blue-Berry"); assert(form.money[1]:HasFocus())
+    state.click(form.kindButtons.item); assert(form.quantity:HasFocus())
+    form.player:SetText("Changed"); state.click(form.target)
+    equal(form.player:GetText(),"Bjørn Blue-Berry"); assert(form.quantity:HasFocus())
+    api.ShowAdd("Explicit Surname"); equal(form.player:GetText(),"Explicit Surname")
+    api.ShowAdd("|Hplayer:fake|hBad|h"); equal(form.player:GetText(),"")
+    api.ShowAdd(string.rep("A",81)); equal(form.player:GetText(),"")
+    equal(#api.GetLedger().entries,0)
+end)
+
+test("context ledger shortcuts filter exact normalized identity in both cards and rows", function()
+    local state=coreSession({ui=true,target="Birch Vale"}); local api=state.api
+    assert(api.Initialize())
+    local function add(player,amount,direction)
+        return assert(api.Add({player=player,direction=direction or "owed",kind="money",amount=amount,label="",note=""}))
+    end
+    add("Unrelated Person",90000); add("Birch Vale",10000); add("Birch Vale Junior",20000)
+    add("birch   vale",30000); add("Birch Vale",5000,"owe")
+    local before=assert(api.Export())
+    api.ShowTargetRecords(); local ui=api.UI
+    equal(ui.cards[1].value:GetText(),"4g 00s 00c"); equal(ui.cards[2].value:GetText(),"0g 50s 00c")
+    equal(ui.tab,"owed"); assert(ui.rows[1]:IsShown() and ui.rows[2]:IsShown() and not ui.rows[3]:IsShown())
+    state.click(ui.tabs.owe); equal(ui.selected,5)
+    state.click(ui.tabs.owed); equal(ui.cards[1].value:GetText(),"4g 00s 00c")
+    ui.search:SetText(""); equal(ui.exactPlayer,nil); equal(ui.cards[1].value:GetText(),"15g 00s 00c")
+    api.ShowPlayerRecords("BIRCH    VALE"); equal(ui.cards[1].value:GetText(),"4g 00s 00c")
+    equal(assert(api.Export()),before)
+end)
+
+test("context preferences persist and successful personal writes invalidate reminders", function()
+    local state=coreSession({ui=true}); local api=state.api
+    assert(api.Initialize()); api.ShowSettings()
+    assert(api.GetSettings().playerTooltips and api.GetSettings().tradeReminders)
+    assert(not api.UI.sharedButton:IsShown())
+    state.click(api.UI.settings.tooltips); state.click(api.UI.settings.trade)
+    assert(not api.GetSettings().playerTooltips and not api.GetSettings().tradeReminders)
+    local count=0; api.PlayerContext.Invalidate=function() count=count+1 end
+    local e=assert(api.Add({player="Friend Fullname",direction="owed",kind="money",amount=10000,label="",note=""}))
+    equal(count,1); assert(not api.Pay(e.id,10001,"")); equal(count,1)
+    assert(api.Pay(e.id,4000,"")); equal(count,2)
+    assert(api.ReplaceLedger(api.GetLedger())); equal(count,3)
+    local reloaded=coreSession({ui=true,db=state.env.IOUDB}); assert(reloaded.api.Initialize())
+    assert(not reloaded.api.GetSettings().playerTooltips and not reloaded.api.GetSettings().tradeReminders)
+    state.click(state.button(api.UI.settings,"Backups")); assert(api.UI.backup:IsShown())
 end)
 
 -- Later integration harnesses reuse the same complete addon environments. This

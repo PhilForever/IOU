@@ -1,6 +1,20 @@
-# Shared gold agreements (experimental)
+# Shared gold agreements
 
-Version **0.5.0** adds clearer views, search, and review counts to **Shared** or `/iou shared`, alongside payments, corrections, and separate Shared backups. Existing shared gold agreements are retained. The addon uses the normal Release channel. Live 0.3.2 reports show 4/4 exact connection probes; screenshots demonstrate an acknowledged agreement, partial payment, correction, and final settlement. Recovery and the new workflow still need live verification.
+For a quick record of gold or crafting items, use **+ New IOU** in the main ledger. The other player does not need the addon. Player tooltips and trade reminders show these records during normal play.
+
+Use **Settings → Shared agreements** or `/iou shared` when both players want to acknowledge a gold agreement. In **0.6.0**, closing this board leaves your explicitly enabled session running; you can return to the game while the other player reviews. There is no need to keep the board open. Sharing still stops at Disconnect, logout, or reload, and accepting always requires your click.
+
+Both players need IOU for Shared. Existing gold agreements are retained; items remain personal records for now. IOU uses the normal Release channel. New tooltip, trade, and window-close behavior await live verification.
+
+## Send an agreement
+
+1. Both players open Shared, fill each other's full name with **Use target** or by typing, and click **Connect**.
+2. One clicks **+ Propose gold**, chooses who owes whom, enters the amount, and sends. Notes and due dates are optional.
+3. The sender sees the proposal under **Sent**. The other player sees it under **Needs review**: select it, click **Review / accept**, read the terms, then click **Accept these terms**.
+
+After the acknowledgment arrives, both find the accepted original under **Agreements**. The review count/minimap notice helps the recipient find incoming work; it does not open a popup. Closing the board or the review does not accept anything. Use **Disconnect** when you want to stop the selected session.
+
+**Sent on one client and Needs review on the other is expected.** The sender is waiting for a decision; the recipient has a decision to make. An unaccepted proposal does not count as an agreed debt.
 
 ## Find offers and agreements
 
@@ -8,7 +22,7 @@ Version **0.5.0** adds clearer views, search, and review counts to **Shared** or
 | --- | --- |
 | Needs review | Incoming proposals and unreviewed interrupted offers, including your own paused offers. |
 | Agreements | Acknowledged original agreements with an open balance or an unfinished payment/correction. |
-| Waiting | Sent proposals, acceptance/decline in progress, and commitments still awaiting peer acknowledgment. |
+| Sent | Sent proposals, acceptance/decline in progress, and commitments still awaiting peer acknowledgment. |
 | History | Settled originals without unfinished events, completed payment/correction offers, declined/withdrawn offers, and locally reviewed paused offers. |
 | All offers | Every retained offer, including original agreements and individual financial events. |
 
@@ -16,13 +30,13 @@ The first opening chooses a useful nonempty view. After you choose a view or typ
 
 Original agreement rows show the current acknowledged **Remaining** amount. Payment and correction rows show their own **Amount**. Details retain full terms and history. New proposals and financial events are selected in their appropriate view after you send them; browsing never sends or accepts.
 
-The main **Shared (N)** button and minimap badge show offers needing review. **Shift-left-click** the minimap to open that view. A pending recovery shows `!` and opens its recovery review. These are passive notices; there are no automatic popups, connections, or acceptances.
+When work needs attention, the main **Shared (N)** button and minimap badge show the review count. Otherwise Shared is available in Settings. **Shift-left-click** the minimap opens the review view. A pending recovery shows `!` and opens its recovery review. These are passive notices; there are no automatic popups, connections, or acceptances.
 
 ## Propose and accept
 
-1. Both players open **Shared**, enter each other's exact full first name and surname, then click **Enable for player**. **Use target** can fill the name in. When disconnected, **Enable for selected player** uses a retained offer's exact participant after a separate click. It never switches an already enabled player; disconnect first. Keep both shared windows open. Enabled status describes your local choice, not proof that the other player is online or ready.
+1. Both players open **Shared**, enter each other's exact full first name and surname, then click **Connect**. **Use target** can fill the name in. When disconnected, **Connect selected player** uses a retained offer's exact participant after a separate click. It never switches an already connected player; disconnect first. You may close the board after connecting. Connected status describes your local choice, not proof that the other player is online or ready.
 2. The proposer clicks **+ Propose gold**, chooses who will owe whom, and enters coins, an optional due day, and a note. **Send proposal** sends those terms to the enabled player.
-3. The recipient selects the received offer under **Needs review** and clicks **Review / accept**. A separate review shows both participants, debtor, creditor, amount, the full note, and the UTC deadline. **Accept these terms** records consent to those exact terms. Once accepted, the offer leaves Needs review; follow it under Waiting and then Agreements or History.
+3. The recipient selects the received offer under **Needs review** and clicks **Review / accept**. A separate review shows both participants, debtor, creditor, amount, the full note, and the UTC deadline. **Accept these terms** records consent to those exact terms. Once accepted, the offer leaves Needs review; follow it under Sent and then Agreements or History.
 4. IOU exchanges the commitment and acknowledgment. The status distinguishes an agreed record from observed peer acknowledgment. A successful API send alone is not a receipt.
 
 Either player can propose an obligation in either direction. A pending proposal is not an accepted debt. Acceptance records the players' stated agreement; it does not transfer or verify gold. Shared records appear separately from personal ledger balances. Amendments remain future work.
@@ -45,11 +59,13 @@ Only one unfinished payment/correction can target an obligation. Every event bin
 
 **Retry** resends the same retained protocol decision for the selected offer; it does not create another acceptance or agreement. Communication is paced and bounded. Queue, account restrictions, unsupported APIs, and exact-name mismatches produce status messages. Messages use logged addon whispers with readable text; there is no ordinary-chat fallback or automatic acceptance.
 
-Closing the Shared window, pressing Escape in its name box, `/iou shared off`, or reloading disables sharing. Unfinished handshakes become **Paused**. Queued traffic is discarded, and nothing resumes automatically on the next login. Agreed records remain agreed and retain their history.
+Closing the Shared window, including Escape in its name box, hides the board and leaves the selected session enabled. The wire can continue delivering the retained proposal or acknowledgment; it cannot create consent. The connection test is separate: closing its window still stops diagnostic listening.
 
-An old offer may have progressed further on the other player's client. Reconcile it with them before replacing it. With sharing off, select a paused offer and choose **Review paused offer**. Read its retained terms, optionally enter a reason, and choose **Mark reviewed locally**. This preserves the old record and a local review marker. It does not cancel or settle the other player's record. Delayed messages cannot reopen the locally reviewed offer.
+**Disconnect**, `/iou shared off`, logout, reload, or an actual transport stop disables sharing. Unfinished handshakes become **Paused**; queued traffic is discarded and nothing resumes automatically at login. Agreed records remain agreed and retain their history. There is no short review countdown that requires keeping the board open.
 
-An unresolved paused offer blocks a replacement proposal with that same player. After both players have reconciled their old records, a fresh proposal uses fresh identifiers and requires fresh acceptance. Records are retained; reaching the 32-offer storage cap rejects new offers rather than evicting history.
+An old offer may have progressed further on the other player's client. Reconcile it with them before replacing it. With sharing off, select a paused offer and choose **Close interrupted request**. Read its retained terms, optionally enter a reason, and choose **Close request locally**. This preserves the old record and a local review marker. It does not accept the request, record a payment, or cancel or settle the other player's record. Delayed messages cannot reopen the locally closed request.
+
+An unresolved paused offer blocks a replacement proposal with that same player. After both players have reconciled their old records, a fresh proposal uses fresh identifiers and requires fresh acceptance. Records are retained; reaching the 32-offer storage cap rejects new offers rather than evicting history. Older offers paused by closing the board on 0.5.0 stay paused until reviewed; the new close behavior does not resume them.
 
 ## Saved data and scope
 

@@ -45,7 +45,8 @@ def main() -> int:
                   "test_shared_wire.lua", "test_shared_service.lua",
                   "test_shared_payment_codec.lua", "test_shared_payments.lua",
                   "test_shared_payment_integration.lua", "test_shared_backup_codec.lua", "test_shared_recovery.lua",
-                  "test_shared_backup_ui.lua", "test_shared_view.lua", "test_shared_workflow.lua")]
+                  "test_shared_backup_ui.lua", "test_shared_view.lua", "test_shared_workflow.lua",
+                  "test_player_summary.lua", "test_player_context.lua")]
     for path in [*files, *harnesses]:
         compile_only(path.read_text(encoding="utf-8-sig"), "@" + path.name)
     lua.globals().IOU_SOURCES = lua.table_from(
@@ -73,7 +74,7 @@ def main() -> int:
     for label, count in zip(("Ledger/UI", "Transport", "Shared agreement",
                              "Shared wire", "Shared service", "Shared payment codec",
                              "Shared payments", "Shared payment integration", "Shared backup codec", "Shared recovery",
-                             "Shared backup UI", "Shared view", "Shared workflow"), counts,
+                             "Shared backup UI", "Shared view", "Shared workflow", "Player summary", "Player context"), counts,
                             strict=True):
         print(f"{label} checks: {count} passed.")
     print(f"Checks: {sum(counts)} passed.")
