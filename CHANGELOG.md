@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-10-17
+
+- Made Requests available in the main header, with passive review counts. Existing Shared records remain separate from personal IOUs.
+- Shortened money, list rows, record summaries, and ordinary Shared text. Retained history and full agreement details behind expandable controls.
+- Collapsed optional New IOU fields and moved manual financial/edit/correction actions into More. Existing records, payment rules, consent, and backup formats are unchanged.
+- Added the development roadmap through 1.0, prioritizing automatic trade and mail repayments. Future successful outgoing matching mail counts in the sender's personal ledger immediately after send success; it does not wait for recipient collection or acknowledgment.
+
+Automatic repayments are **not implemented in 0.7.0**. The user confirmed that personal and Shared balances appear in 0.6.0 trade and tooltip reminders. New 0.7.0 presentation behavior remains subject to normal in-game use; no repeat screenshots or backup tests are required.
+
 ## 0.6.0 — 2026-10-17
 
 - Put personal gold and crafting-item records first. New IOUs can use the targeted player's full name; the main header offers Target IOUs, while Shared and optional backups remain available in Settings.
@@ -9,7 +18,7 @@
 - Renamed the sender's Waiting view to Sent. Incoming offers appear under Needs review on the recipient's client; these different views describe the same pending offer.
 - Kept attention counts and recovery notices available without putting connection and backup controls ahead of ordinary bookkeeping. Existing ledgers, Shared evidence, and backup formats are preserved.
 
-Validation: read-only player-summary and client-context regressions, complete-addon workflow checks, existing financial/consent/recovery simulations, publisher checks, and package validation. The user reported successful 0.5.0 backup checks; supplied before/after exports validate and preserve prior history, while the new test proposal remains interrupted in those snapshots. Live 0.6.0 tooltip, trade, and close-window verification remain pending. **Fully restart after this update because it adds addon files.** Published through the regular Release channel.
+Validation: read-only player-summary and client-context regressions, complete-addon workflow checks, existing financial/consent/recovery simulations, publisher checks, and package validation. The user reported successful 0.5.0 backup checks; supplied before/after exports validate and preserve prior history, while the new test proposal remains interrupted in those snapshots. The later user report confirms personal and Shared debts in the live 0.6.0 trade and tooltip reminders; it does not separately establish every close-window or failure condition. **Fully restart after this update because it adds addon files.** Published through the regular Release channel.
 
 ## 0.5.0 — 2026-10-17
 

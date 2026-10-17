@@ -267,9 +267,10 @@ test("payment, settlement and correction forms expose exact amounts and require 
     sim:runUntil(function() return b.api.SharedService.GetOffer(payment.offerId)~=nil end)
     b.api.ShowSharedReview(payment.offerId,"accept")
     local review=b.api.UI.sharedReview
+    b.click(review.detailToggle)
     local details=review.details:GetText()
     for _,text in ipairs({"Original immutable gold obligation","Partial payment with a full visible note",
-        "Original debtor: Birch Vale","Balance before this event: 1g 00s 00c","Balance after acknowledgment: 0g 80s 00c"}) do
+        "Original debtor: Birch Vale","Balance before this event: 1g","Balance after acknowledgment: 80s"}) do
         assert(details:find(text,1,true),"payment review omitted "..text)
     end
     equal(b.api.SharedService.GetOffer(payment.offerId).state,"OFFER_RECEIVED")
@@ -303,6 +304,7 @@ test("payment, settlement and correction forms expose exact amounts and require 
     sim:runUntil(function() return b.api.SharedService.GetOffer(correction.offerId)~=nil end)
     b.api.ShowSharedReview(correction.offerId,"accept")
     review=b.api.UI.sharedReview
+    b.click(review.detailToggle)
     assert(review.details:GetText():find("Full reversal of payment: #"..payment.offerId:match("%-(%d+)$"),1,true))
     assert(review.details:GetText():find(terms.note,1,true))
     b.click(review.confirm); sim:confirmed(correction.offerId); sim:balances(2000)

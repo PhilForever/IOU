@@ -1,10 +1,10 @@
 # Shared Agreements development
 
-Version **0.6.0** adds exact-player debt summaries and read-only tooltip/trade integration, with personal records as the main workflow. The existing codec, state engine, payment domain, backup/recovery, wire, and consent UI are retained. Closing the Shared board now hides the UI without disabling the explicitly selected session. Explicit disconnect, logout/reload, recovery gates, and transport failure keep the existing stop/pause behavior.
+Version **0.7.0** simplifies the existing views: Requests stays accessible, normal details show essential balances and terms, and History, technical Details, and secondary actions are expandable. This release changes presentation only; it does not automate repayments or alter stored financial records or consent. The read-only player/trade reminders and window-independent Shared session introduced in 0.6.0 are retained. Explicit disconnect, logout/reload, recovery gates, and transport failure keep the existing stop/pause behavior.
 
 The pure modules perform no network traffic, file access, UI work, or `IOUDB` access. They obtain no clock values: callers supply integer timestamps. Displaying a reminder, opening a trade, targeting a player, and closing a decision review never mutate a balance or accept Shared terms.
 
-The personal ledger remains separate. See the [player guide](shared-agreements.md) and [protocol specification](shared-agreements-protocol.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement. The user reported successful backup checks on 0.5.0; supplied snapshots preserve existing history but retain the new test offer as interrupted. Live 0.6.0 context hooks and close-window behavior remain unverified.
+The personal ledger remains separate. See the [player guide](shared-agreements.md), [protocol specification](shared-agreements-protocol.md), and [roadmap](roadmap.md). Live 0.3.2 reports demonstrate diagnostic round trips and acknowledged payment/correction/settlement. The user reported successful backup checks on 0.5.0, and confirmed in-game that personal and Shared debts appear in trade reminders and player tooltips on 0.6.0. The revised 0.7.0 layout remains pending live use.
 
 ## State API
 

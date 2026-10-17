@@ -1217,6 +1217,13 @@ test("login reminders count overdue open entries and obey the saved toggle", fun
     equal(#quiet.messages,1)
 end)
 
+local function personalAction(state, control)
+    local ui=state.api.UI
+    if not ui.moreMenu:IsShown() then state.click(ui.more) end
+    assert(ui.moreMenu:IsShown(),"personal action menu did not open")
+    state.click(control)
+end
+
 test("UI creates gold IOUs and rejects invalid coins without mutation", function()
     local state=coreSession({ui=true}); local api=state.api
     state.env.SlashCmdList.IOU("")
@@ -1227,7 +1234,7 @@ test("UI creates gold IOUs and rejects invalid coins without mutation", function
     form.money[2]:SetText("100"); form.money[3]:SetText("45")
     state.click(state.button(form,"Create IOU"))
     equal(#api.GetLedger().entries,0); assert(form.error:GetText()~="")
-    form.money[2]:SetText("23"); form.note:SetText("Raid split |cffff0000literal")
+    form.money[2]:SetText("23"); state.click(form.moreOptions); form.note:SetText("Raid split |cffff0000literal")
     state.click(state.button(form,"Create IOU"))
     equal(#api.GetLedger().entries,1)
     equal(api.GetLedger().entries[1].amount,12345)
@@ -1253,7 +1260,7 @@ test("UI captures item links, changes direction, and records deliveries", functi
     equal(ui.tab,"owe"); equal(api.GetLedger().entries[1].label,link)
     equal(ui.balance:GetText(),"20 x [Peacebloom]")
     equal(ui.pay:GetText(),"Record delivery")
-    state.click(ui.pay); local action=ui.action
+    personalAction(state,ui.pay); local action=ui.action
     assert(action.unitsGroup:IsShown()); assert(not action.moneyGroup:IsShown())
     action.quantity:SetText("7"); action.note:SetText("First bundle")
     state.click(action.confirm)
@@ -1297,18 +1304,18 @@ test("UI payment, settlement, history, and reversal actions follow balances", fu
     local state=coreSession({ui=true}); local api=state.api
     local e=assert(api.Add({player="Friend",direction="owed",kind="money",amount=1000,label="",note=""}))
     api.Toggle(); local ui=api.UI
-    state.click(ui.pay); local action=ui.action
+    personalAction(state,ui.pay); local action=ui.action
     action.money:Fill(400); state.click(action.confirm)
     equal(api.Ledger.Balance(api.GetLedger().entries[1]),600)
-    state.click(ui.settle); state.click(action.confirm)
+    personalAction(state,ui.settle); state.click(action.confirm)
     equal(api.Ledger.Balance(api.GetLedger().entries[1]),0)
     equal(ui.tab,"history"); equal(ui.selected,e.id); assert(not ui.pay.enabled)
-    equal(ui.selected,e.id); equal(ui.balance:GetText(),"0g 00s 00c")
+    equal(ui.selected,e.id); equal(ui.balance:GetText(),"0g")
     api.ShowAction("reverse",e.id,2); action.note:SetText("Receipt was wrong")
     state.click(action.confirm)
     equal(api.Ledger.Balance(api.GetLedger().entries[1]),600)
     equal(ui.tab,"owed")
-    equal(ui.selected,e.id); equal(ui.balance:GetText(),"0g 06s 00c")
+    equal(ui.selected,e.id); equal(ui.balance:GetText(),"6s")
 end)
 
 test("UI search, pagination and timeline reuse stay bounded", function()
@@ -1374,6 +1381,7 @@ test("UI paginates a full audit trail with a fixed object pool", function()
         characters={["Testplayer-TestRealm"]=db},recovery={}}})
     assert(state.api.Initialize()); state.api.Toggle()
     local ui=state.api.UI
+    state.click(ui.historyToggle)
     equal(ui.historyPages:GetText(),"1 / 20")
     local function undoCount()
         local count=0
@@ -1402,6 +1410,7 @@ test("UI bounds newline-heavy previews and preserves full note text", function()
         characters={["Testplayer-TestRealm"]=db},recovery={}}})
     assert(state.api.Initialize()); state.api.Toggle()
     local api,ui=state.api,state.api.UI
+    state.click(ui.historyToggle)
     assert(ui.detailContent:GetHeight()<10000,"newline-heavy notes exceeded timeline geometry budget")
     local function fullNoteButtons()
         local count=0
@@ -1444,6 +1453,7 @@ end)
 test("UI validates due dates while metadata correction reasons remain optional", function()
     local state=coreSession({ui=true}); local api=state.api
     api.ShowAdd(); local ui,form=api.UI,api.UI.add
+    state.click(form.moreOptions)
     form.player:SetText("Original"); form.money:Fill(100)
     form.due:SetText("2027-02-29")
     state.click(state.button(form,"Create IOU"))
@@ -1451,7 +1461,7 @@ test("UI validates due dates while metadata correction reasons remain optional",
     form.due:SetText("2028-02-29"); state.click(state.button(form,"Create IOU"))
     local e=api.GetLedger().entries[1]
     equal(api.FormatDueDate(e.due),"2028-02-29"); assert(ui.due:GetText():find("2028-02-29",1,true))
-    state.click(ui.edit); local edit=ui.editForm
+    personalAction(state,ui.edit); local edit=ui.editForm
     equal(edit.player:GetText(),"Original"); equal(edit.due:GetText(),"2028-02-29")
     edit.player:SetText("Corrected"); edit.note:SetText("Quest split")
     edit.due:SetText("2028-03-01"); state.click(edit.save)
@@ -1468,16 +1478,16 @@ test("UI cancellation and restoration keep balances with optional reasons", func
     local state=coreSession({ui=true}); local api=state.api
     local e=assert(api.Add({player="Friend",direction="owed",kind="money",amount=100,label="",note=""}))
     assert(api.Pay(e.id,25,"part")); api.Toggle(); local ui=api.UI
-    state.click(ui.cancel); local action=ui.action
+    personalAction(state,ui.cancel); local action=ui.action
     equal(action.mode,"cancel"); assert(not action.moneyGroup:IsShown()); assert(not action.unitsGroup:IsShown())
     equal(action.noteCaption:GetText(),"Reason (optional)")
     state.click(action.confirm); equal(#api.GetLedger().entries[1].events,2)
     equal(api.GetLedger().entries[1].events[2].note,"No reason provided")
-    equal(ui.tab,"history"); equal(ui.selected,e.id); equal(ui.balance:GetText(),"0g 00s 75c")
+    equal(ui.tab,"history"); equal(ui.selected,e.id); equal(ui.balance:GetText(),"75c")
     equal(L.Status(api.GetLedger().entries[1]),"cancelled")
     assert(not ui.pay.enabled and not ui.settle.enabled and not ui.edit.enabled)
-    equal(ui.cancel:GetText(),"Restore IOU"); equal(ui.cards[1].value:GetText(),"0g 00s 00c")
-    state.click(ui.cancel); equal(action.mode,"restore")
+    equal(ui.cancel:GetText(),"Reopen"); equal(ui.cards[1].value:GetText(),"0g")
+    personalAction(state,ui.cancel); equal(action.mode,"restore")
     state.click(action.confirm)
     equal(ui.tab,"owed"); equal(ui.selected,e.id); equal(L.Balance(api.GetLedger().entries[1]),75)
     equal(ui.cancel:GetText(),"Cancel IOU"); assert(ui.pay.enabled and ui.edit.enabled)
@@ -1496,12 +1506,12 @@ test("UI type, search and sort controls keep rows and totals consistent", functi
     state.click(ui.sortButton); equal(ui.sort,"player"); equal(ui.rows[1].player:GetText(),"Alice")
     state.click(ui.sortButton); equal(ui.sort,"due"); equal(ui.rows[1].player:GetText(),"Bob")
     state.click(ui.typeButtons.item); equal(ui.kind,"item"); equal(ui.rows[1].player:GetText(),"Alice")
-    equal(ui.pages:GetText(),"Page 1 / 1  -  1 IOUs"); equal(ui.cards[1].value:GetText(),"0g 00s 00c")
+    equal(ui.pages:GetText(),"Page 1 / 1  -  1 IOUs"); equal(ui.cards[1].value:GetText(),"0g")
     assert(ui.cards[1].counts:GetText():find("1 item",1,true))
     state.click(ui.typeButtons.all); ui.search:SetText("[42]")
-    equal(ui.pages:GetText(),"Page 1 / 1  -  2 IOUs"); equal(ui.cards[1].value:GetText(),"0g 01s 00c")
+    equal(ui.pages:GetText(),"Page 1 / 1  -  2 IOUs"); equal(ui.cards[1].value:GetText(),"1s")
     ui.search:SetText("cloth"); equal(ui.selected,2)
-    equal(ui.cards[1].value:GetText(),"0g 00s 00c")
+    equal(ui.cards[1].value:GetText(),"0g")
     state.click(ui.typeButtons.item); api.ShowAdd()
     local form=ui.add
     form.player:SetText("Visible new gold"); form.money:Fill(500)
@@ -1833,6 +1843,7 @@ test("shared incoming fragments require full visible term review and a separate 
     local review=api.UI.sharedReview
     assert(review:IsShown() and review.confirm.enabled)
     equal(review.offerId,offer.offerId); equal(review.terms,offer.terms)
+    state.click(review.detailToggle)
     local shown=visibleText(state,review)
     for _,value in ipairs({"Proposer: Remote Peer","Recipient: Testplayer Surname",
         "Debtor: Testplayer Surname","Creditor: Remote Peer","1g 23s 45c",note,"UTC"}) do
@@ -2003,6 +2014,7 @@ end)
 test("single-line and blank multiline clicks focus immediately and hidden fields release keyboard input", function()
     local state=coreSession({ui=true,connection=true}); local api=state.api
     api.ShowAdd(); local form=api.UI.add
+    state.click(form.moreOptions)
     local start=state.now
     for _,box in ipairs({form.player,form.due,form.money[1],form.money[2],form.money[3],form.note}) do
         state.mouseDown(box)
@@ -2049,7 +2061,7 @@ test("shared paused review accepts an omitted reason and records only a local de
     state.click(board.closePaused)
     local review=api.UI.sharedReview
     assert(review:IsShown() and review.reason:IsShown())
-    assert(review.explanation:GetText():find("local review",1,true))
+    assert(review.explanation:GetText():find("does not accept",1,true))
     local before=copy(api.SharedService.GetStore())
     state.click(review.confirm)
     local offer=api.SharedService.GetOffer("remote-offer")
@@ -2108,6 +2120,8 @@ test("two complete addon sessions agree through framed whispers only after recip
     equal(b.env.IOUDB.sharedByCharacter[b.api.Character()].store.offers[id].state,"COMMITTED")
     assert(same(a.api.GetLedger(),personalA) and same(b.api.GetLedger(),personalB))
     a.api.SelectSharedOffer(id)
+    assert(a.api.UI.shared.details:GetText():find("Agreed",1,true))
+    a.click(a.api.UI.shared.detailToggle)
     assert(a.api.UI.shared.details:GetText():find("their IOU acknowledged",1,true))
     a.api.UI.shared:Hide(); b.api.UI.shared:Hide()
     assert(a.api.SharedService.IsEnabled() and b.api.SharedService.IsEnabled())
@@ -2141,20 +2155,37 @@ test("context ledger shortcuts filter exact normalized identity in both cards an
     add("birch   vale",30000); add("Birch Vale",5000,"owe")
     local before=assert(api.Export())
     api.ShowTargetRecords(); local ui=api.UI
-    equal(ui.cards[1].value:GetText(),"4g 00s 00c"); equal(ui.cards[2].value:GetText(),"0g 50s 00c")
+    equal(ui.cards[1].value:GetText(),"4g"); equal(ui.cards[2].value:GetText(),"50s")
     equal(ui.tab,"owed"); assert(ui.rows[1]:IsShown() and ui.rows[2]:IsShown() and not ui.rows[3]:IsShown())
     state.click(ui.tabs.owe); equal(ui.selected,5)
-    state.click(ui.tabs.owed); equal(ui.cards[1].value:GetText(),"4g 00s 00c")
-    ui.search:SetText(""); equal(ui.exactPlayer,nil); equal(ui.cards[1].value:GetText(),"15g 00s 00c")
-    api.ShowPlayerRecords("BIRCH    VALE"); equal(ui.cards[1].value:GetText(),"4g 00s 00c")
+    state.click(ui.tabs.owed); equal(ui.cards[1].value:GetText(),"4g")
+    ui.search:SetText(""); equal(ui.exactPlayer,nil); equal(ui.cards[1].value:GetText(),"15g")
+    api.ShowPlayerRecords("BIRCH    VALE"); equal(ui.cards[1].value:GetText(),"4g")
     equal(assert(api.Export()),before)
+end)
+
+test("launcher summaries omit empty counts and describe item records without zero-gold noise", function()
+    local state=coreSession({ui=true,launcher=true}); local api=state.api
+    assert(api.Initialize()); api.UpdateLauncher()
+    local function tooltip()
+        api.launcher.scripts.OnEnter(api.launcher)
+        return table.concat(state.env.GameTooltip.lines,"\n")
+    end
+    local empty=tooltip()
+    assert(empty:find("No open personal IOUs.",1,true)); assert(not empty:find("Requests: 0",1,true))
+    assert(api.Add({player="Birch Vale",direction="owed",kind="item",amount=5,label="Linen Cloth",note=""}))
+    local before=assert(api.Export()); local items=tooltip()
+    assert(items:find("Owed to you: 1 item IOU",1,true)); assert(not items:find("0g",1,true))
+    equal(assert(api.Export()),before)
+    assert(api.Add({player="Birch Vale",direction="owed",kind="money",amount=10000,label="",note=""}))
+    assert(tooltip():find("Owed to you: 1g, 1 item IOU",1,true))
 end)
 
 test("context preferences persist and successful personal writes invalidate reminders", function()
     local state=coreSession({ui=true}); local api=state.api
     assert(api.Initialize()); api.ShowSettings()
     assert(api.GetSettings().playerTooltips and api.GetSettings().tradeReminders)
-    assert(not api.UI.sharedButton:IsShown())
+    assert(api.UI.sharedButton:IsShown()); equal(api.UI.sharedButton:GetText(),"Requests")
     state.click(api.UI.settings.tooltips); state.click(api.UI.settings.trade)
     assert(not api.GetSettings().playerTooltips and not api.GetSettings().tradeReminders)
     local count=0; api.PlayerContext.Invalidate=function() count=count+1 end

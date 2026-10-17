@@ -71,7 +71,7 @@ test("personal and Shared entry buttons open separate complete Shared exports wi
     assert(api.SharedService.IsEnabled())
     local decoded = assert(api.SharedBackup.Decode(form.box:GetText()))
     equal(decoded.owner, "Amber Stone"); equal(decoded.character, api.Character())
-    state.click(api.UI.shared.backups)
+    state.click(api.UI.shared.more); state.click(api.UI.shared.backups)
     assert(api.SharedService.IsEnabled(), "opening a backup window disconnected sharing")
     state.click(form.preview)
     assert(same(before, api.SharedService.GetStore()))

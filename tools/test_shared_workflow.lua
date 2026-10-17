@@ -105,7 +105,10 @@ local function visibleIds(board)
 end
 local function expectIds(state,filter,ids)
     local board=state.api.UI.shared
-    if board.filter~=filter then state.click(board.filterButtons[filter]) end
+    if board.filter~=filter then
+        if filter=="all" then state.click(board.more) end
+        state.click(board.filterButtons[filter])
+    end
     while board.previous.enabled do state.click(board.previous) end
     local found={}
     repeat
@@ -255,7 +258,7 @@ test("workflow closing an interrupted request records no acceptance or agreement
     state.click(board.closePaused)
     local review=api.UI.sharedReview
     equal(review.title:GetText(),"Close interrupted request")
-    equal(review.confirm:GetText(),"Close request locally")
+    equal(review.confirm:GetText(),"Close locally")
     contains(review.explanation:GetText(),"does not accept the request")
     local before=copy(api.SharedService.GetStore())
     state.click(review.confirm)
@@ -282,7 +285,7 @@ test("workflow views separate consent waiting, active agreements, completed even
     expectIds(state,"history",{"declined","withdrawn","closed","partial-payment","settled","settled-payment"})
     equal(state.api.GetSharedAttention().count,2)
     local before=copy(state.api.SharedService.GetStore())
-    state.click(state.api.UI.shared.filterButtons.all)
+    state.click(state.api.UI.shared.more); state.click(state.api.UI.shared.filterButtons.all)
     assert(same(before,state.api.SharedService.GetStore()))
     equal(#state.transportSent,0)
 end)
@@ -398,8 +401,8 @@ test("workflow original rows show current remaining while child rows retain even
     for _,row in ipairs(state.api.UI.shared.rows) do
         if row.offerId and row:IsShown() then found[row.offerId]=row end
     end
-    contains(found.partial.amount:GetText(),"0g 65s 00c")
-    contains(found["partial-payment"].amount:GetText(),"0g 35s 00c")
+    contains(found.partial.amount:GetText(),"65s")
+    contains(found["partial-payment"].amount:GetText(),"35s")
     contains(found["partial-payment"].title:GetText(),"Payment")
 end)
 
@@ -508,7 +511,7 @@ test("workflow incoming packets update review counts without stealing a chosen v
     local board=api.UI.shared
     state.click(board.enable)
     api.SelectSharedOffer("existing")
-    if board.filter~="all" then state.click(board.filterButtons.all) end
+    if board.filter~="all" then state.click(board.more); state.click(board.filterButtons.all) end
     board.search:SetText("Synthetic")
     board.search:SetFocus(); board.scroll:SetVerticalScroll(37)
     local selected,filter=board.selected,board.filter
@@ -541,7 +544,7 @@ test("workflow attention works before opening the board and cached getters or to
     local attention=api.GetSharedAttention(); attention.count=999
     equal(api.GetSharedAttention().count,1,"attention snapshot was not detached")
     api.launcher.scripts.OnEnter(api.launcher)
-    contains(table.concat(state.env.GameTooltip.lines,"\n"),"1 need review")
+    contains(table.concat(state.env.GameTooltip.lines,"\n"),"Requests: 1")
     equal(reads,0); equal(#state.transportSent,0)
     api.SharedService.GetOverview=original
     state.env.IsShiftKeyDown=function() return true end

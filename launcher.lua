@@ -75,15 +75,23 @@ function IOU.UpdateLauncher()
             GameTooltip:AddLine("IOU", 0.88, 0.73, 0.42)
             local owed = IOU.Ledger.Summary(IOU.GetLedger(), "owed")
             local owe = IOU.Ledger.Summary(IOU.GetLedger(), "owe")
-            GameTooltip:AddLine("Owed to you: " .. IOU.Ledger.FormatMoney(owed.money), 1, 1, 1)
-            GameTooltip:AddLine("You owe: " .. IOU.Ledger.FormatMoney(owe.money), 1, 1, 1)
+            local money = IOU.UI and IOU.UI.Helpers.money or IOU.Ledger.FormatMoney
+            local function summary(value)
+                local parts = {}
+                if value.money > 0 then parts[#parts + 1] = money(value.money) end
+                if value.items > 0 then parts[#parts + 1] = value.items .. " item IOU" .. (value.items == 1 and "" or "s") end
+                if value.favors > 0 then parts[#parts + 1] = value.favors .. " favor" .. (value.favors == 1 and "" or "s") end
+                return table.concat(parts, ", ")
+            end
+            if owed.active > 0 then GameTooltip:AddLine("Owed to you: " .. summary(owed), 1, 1, 1) end
+            if owe.active > 0 then GameTooltip:AddLine("You owe: " .. summary(owe), 1, 1, 1) end
+            if owed.active + owe.active == 0 then GameTooltip:AddLine("No open personal IOUs.", 0.7, 0.7, 0.7) end
             local attention = IOU.GetSharedAttention and IOU.GetSharedAttention() or {count=0}
-            GameTooltip:AddLine("Shared: " .. attention.count .. " need review", 1, 0.82, 0)
+            if attention.count > 0 then GameTooltip:AddLine("Requests: " .. attention.count, 1, 0.82, 0) end
             if attention.recovery then GameTooltip:AddLine("Shared recovery needs review.", 1, 0.82, 0)
-            elseif attention.error then GameTooltip:AddLine("Open Shared to review a storage issue.", 1, 0.82, 0) end
+            elseif attention.error then GameTooltip:AddLine("Shared records need attention.", 1, 0.82, 0) end
             GameTooltip:AddLine("Left-click: ledger / Right-click: new IOU", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine("Shift-left-click: Shared review", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine("Drag to move / /iou settings", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("Shift-left-click: requests", 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)

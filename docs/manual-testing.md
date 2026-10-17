@@ -2,20 +2,18 @@
 
 Target client: **WoW: Forever**, interface `16001`.
 
-Use disposable test records with a consenting friend. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
+Use disposable records when trying financial actions. Record the addon version and client build when reporting a failure. Existing backup/recovery checks do not need repeating for this release.
 
-## Short 0.6.0 check
+## Normal-use check for 0.7.0
 
-Fully restart both clients once because this update adds files. No gold transfer or connection diagnostic is required.
+Personal and Shared debts in the 0.6.0 trade and tooltip reminders were confirmed working by the user. There is no need to repeat that demonstration or send screenshots/exports.
 
-1. Target your friend, open `/iou`, and click **+ New IOU**. Their full name should be filled. Save **Owed to me → 10g**, leaving notes and date blank. This is a personal record; the friend does not need to enable sharing.
-2. Add **I owe → Items → 5 Linen Cloth** for the same player. A typed label is enough; optionally try focusing it and Shift-clicking a real item link.
-3. Hover the player. Expect a readable reminder that they owe you **10g** and you owe them **5 Linen Cloth**. An NPC or a different full name must not inherit it. **Target IOUs** should find the target's records.
-4. Open a trade with that player. Expect the same separate reminders. Close/cancel the trade: neither record should change. Toggle player tooltips and trade reminders off and back on in Settings to check both preferences.
-5. For Shared, both open **Settings → Shared agreements**, choose each other, and click **Connect**. Send a fresh disposable **1g** proposal with **They will owe me**, then both close the Shared board. Reopen it: the selected session should remain connected, with the proposal under **Sent** for the sender and **Needs review** for the recipient. It should remain unaccepted until the recipient reviews and clicks **Accept these terms**.
-6. After acceptance/acknowledgment, the Shared reminder should be labeled separately from the personal 10g record; they must not be combined into an 11g total. Use **Disconnect** explicitly, then `/reload`: personal records and accepted Shared history should remain, while sharing should be off.
+Load the update and use the ledger normally:
 
-Send a short result: **personal creation, hover, trade, close-board Shared acceptance, and reload: pass/fail**. Include one hover screenshot and one trade screenshot. If a step fails, give its number, the exact visible status or full Lua error, and a screenshot. No new export is needed unless investigating a data discrepancy; keep exports and player information private.
+1. Open an existing personal record. Its balance should be easy to find; history should expand when needed, and **More** should expose the secondary actions. Open New IOU: player, direction, and amount should be usable without filling optional details.
+2. Open **Requests** from the main header and select an existing Shared record. The compact summary should be readable, with retained terms/history available through **Details**. Browsing and expanding information must not change a balance or accept a request.
+
+Only report an issue if something feels awkward, is missing, or gives an error. A short description and the full Lua error text are enough. Screenshots and ledger exports are not required. Trade and mail repayments are still manual in 0.7.0; automation is planned separately.
 
 ## Validation record
 
@@ -37,11 +35,13 @@ Send a short result: **personal creation, hover, trade, close-board Shared accep
 | 0.4.0 | Bounded Shared backup codec, service recovery, and complete-addon UI simulations plus existing checks | Exercises same-character restore, add-missing union, conflicts, retained closure evidence, capacity, stale bindings, recovery gate across reload, explicit decisions, and zero recovery traffic. Live backup/recovery remains pending. |
 | 0.5.0 | Pure presentation and complete-addon workflow checks plus existing suites | Exercises classified views, search/global counts, acknowledged remaining amounts, selection/pagination, explicit selected-peer enabling, stale guards, passive notices, incoming focus/scroll preservation, and detached snapshot rendering. Live workflow and prior recovery verification remain pending. |
 | 0.5.0 live feedback | Private before/after exports, screenshots, and user report on 17 October 2026 | User reported successful backup checks with the existing settled balance and record count retained. Supplied snapshots validate and preserve prior records; they retain the new test proposal as interrupted rather than accepted. Sender Waiting versus recipient Needs review was expected. Board closure/reconnection and paused-offer review were confusing; no completed new financial sequence is inferred from these snapshots. |
-| 0.6.0 | Pure exact-player summary, client-context, and workflow checks plus existing suites | Adds personal-first navigation, target-prefilled creation, read-only tooltip/trade reminders, and window-close session retention. Live rendering, exact client identity hooks, trade-frame integration, and the revised Shared flow remain pending. |
+| 0.6.0 | Pure exact-player summary, client-context, and workflow checks plus existing suites | Adds personal-first navigation, target-prefilled creation, read-only tooltip/trade reminders, and window-close session retention. |
+| 0.6.0 live feedback | User report on 17 October 2026 | Personal and Shared IOUs appear in Trade and Tooltip. The user found the addon improved and requested further decluttering. This is sufficient evidence of those live reminders; no repeat screenshots are requested. It does not separately establish every disconnect, failure, or native UI condition. |
+| 0.7.0 | Compact presentation and existing financial/consent regression suites | Shortens the ordinary UI, collapses secondary information, and exposes Requests. No automatic trade/mail balance updates or financial/schema changes. Live usability remains to be assessed through ordinary use. |
 
 Run `python tools/test_iou.py` for the current automated check list and result. A passing harness cannot establish the actual client's rendering, event delivery, keybinding registration, minimap behavior, combat taint, or SavedVariables persistence.
 
-For shared communication, follow the [connection test guide](connection-test.md). Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Capture both private reports, including failures. Verify closing the window or using `/iou test stop` stops traffic, and that listening is off after reload. Personal records must remain unchanged.
+The [connection test guide](connection-test.md) is available for investigating transport failures. Both players use the same build; IOU generates Unicode and byte-boundary probes automatically. Closing the diagnostic window, `/iou test stop`, or reload must stop diagnostic traffic. The successful 0.3.2 live diagnostic does not need routine repetition.
 
 The [Shared guide](shared-agreements.md) describes the player flow. The 0.3.2 pilot covered payment/correction/settlement. The maintainer cases below retain broader checks for both directions, pending acknowledgment, stale reviews, decline/withdraw races, reduced UI scale, and long Unicode notes. They are a regression reference, not a required player test script.
 
@@ -49,7 +49,7 @@ Optional recovery regression: preview your own Shared export, stage it, reload, 
 
 ## Live regression cases
 
-All cases below are **pending live verification for the current release**. Update the record with actual results instead of inferring success from mocks.
+This is a maintainer regression reference, not a required player checklist. Some cases have live evidence in the table above; others remain unverified for the current release. Update the record with actual results instead of inferring success from mocks.
 
 | Case | Steps | Expected result |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ All cases below are **pending live verification for the current release**. Updat
 | Partial payment and settlement | Repay part of an agreement, then settle its remainder. | Balance decreases by the entered amount, history retains both actions, and the settled entry moves to History. Overpayment is rejected. |
 | Correct a repayment | Reverse a payment with a reason, including one on a settled agreement. | The correction and reason are recorded, the original payment stays visible, and an outstanding balance reopens in the correct tab. |
 | Edit details | Use Edit details to change player, label, note, and due date with a reason. | Details update and history records the changes. Financial amount, type, and direction cannot be changed through this form. |
-| Cancel and restore | Cancel an unpaid and a partially paid agreement, then restore each with a reason. | Cancellation removes active balances without creating a repayment; restoration brings back the same remaining balance and retained history. |
+| Cancel and reopen | Use More to cancel an unpaid and a partially paid agreement, then reopen each with an optional reason. | Cancellation retains history and removes active balances without creating a repayment; reopening brings back the same remaining balance. |
 | Due dates | Use a past day, today, a future day, blank input, and an impossible date such as `2026-02-30`. | Past open entries are overdue; today remains current until local end of day; blank removes the due date; invalid dates are rejected. |
 | Login reminders | Create overdue entries in both directions, reload with reminders enabled, then disable reminders and reload again. | Counts describe this character's overdue open agreements. Disabling reminders suppresses the login summary. |
 | Find and sort | Search by player, label, and note. Change type filters and each sort option with several records. | Results and displayed summaries match the active filters; sort is consistent; selected records and pagination remain usable. |

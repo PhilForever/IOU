@@ -1,5 +1,5 @@
 local ADDON, IOU = ...
-IOU.VERSION = "0.6.0"
+IOU.VERSION = "0.7.0"
 local L, C = IOU.Ledger, IOU.Codec
 local ledger, character, failure
 

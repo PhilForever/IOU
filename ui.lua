@@ -89,8 +89,18 @@ local function notePreview(text)
     if cutoff < #normalized then return literal(normalized:sub(1, cutoff)) .. "...", true end
     return literal(normalized), false
 end
+-- Presentation only: saved amounts remain integer copper.
+local function money(value)
+    if type(value) ~= "number" or value ~= value or value < 0 or value > L.MAX_AMOUNT * L.MAX_ENTRIES or value % 1 ~= 0 then return "?" end
+    local parts = {}
+    local gold, silver, copper = math.floor(value / 10000), math.floor(value / 100) % 100, value % 100
+    if gold > 0 then parts[#parts + 1] = gold .. "g" end
+    if silver > 0 then parts[#parts + 1] = silver .. "s" end
+    if copper > 0 then parts[#parts + 1] = copper .. "c" end
+    return #parts > 0 and table.concat(parts, " ") or "0g"
+end
 local function amount(entry, value)
-    if entry.kind == "money" then return L.FormatMoney(value) end
+    if entry.kind == "money" then return money(value) end
     return tostring(value) .. " x " .. labelText(entry)
 end
 local function dateText(stamp) return date("%d %b %Y, %H:%M", stamp) end
@@ -260,21 +270,21 @@ end
 function IOU.RenderSharedAttention(attention)
     attention = attention or {count=0}
     if UI.sharedButton then
-        local caption = "Shared"
-        if attention.recovery or attention.error then caption = "Shared (!)"
-        elseif attention.count > 0 then caption = "Shared (" .. attention.count .. ")" end
+        local caption = "Requests"
+        if attention.recovery or attention.error then caption = "Requests (!)"
+        elseif attention.count > 0 then caption = "Requests (" .. attention.count .. ")" end
         UI.sharedButton:SetText(caption)
-        UI.sharedButton:SetShown(attention.recovery or attention.error or attention.count > 0)
+        UI.sharedButton:Show()
     end
     if IOU.RenderLauncherAttention then IOU.RenderLauncherAttention(attention) end
 end
 
 local function buildMain()
     if UI.main then return end
-    local f = window("IOULedgerWindow", 960, 720)
+    local f = window("IOULedgerWindow", 960, 640)
     UI.main = f
     f:SetScript("OnShow", function(self)
-        fit(self, 960, 720)
+        fit(self, 960, 640)
         local position = IOU.GetSettings().position
         if position then
             self:ClearAllPoints()
@@ -290,8 +300,8 @@ local function buildMain()
     end)
     font(f, 31, 22, -18, 180, "IOU", GOLD)
     UI.character = font(f, 12, 24, -55, 600, "", MUTED)
-    UI.sharedButton = button(f, "Shared", 94, 486, -27, IOU.OpenSharedAttention)
-    button(f, "Settings", 104, 590, -27, function() IOU.ShowSettings() end)
+    UI.sharedButton = button(f, "Requests", 104, 476, -27, IOU.OpenSharedAttention)
+    button(f, "Options", 104, 590, -27, function() IOU.ShowSettings() end)
     button(f, "Target IOUs", 98, 704, -27, function() IOU.ShowTargetRecords() end)
     button(f, "+ New IOU", 114, 812, -27, function() IOU.ShowAdd() end)
     UI.cards = {}
@@ -334,17 +344,16 @@ local function buildMain()
         end
         UI.page, UI.selected = 1, nil; IOU.Refresh()
     end)
-    font(f, 10, 602, -216, 325, "Search player names, descriptions and notes", MUTED)
     UI.rows = {}
     for index = 1, 5 do
         local row = CreateFrame("Button", nil, f, "BackdropTemplate")
-        row:SetSize(366, 67)
-        row:SetPoint("TOPLEFT", 22, -245 - (index - 1) * 74)
+        row:SetSize(366, 58)
+        row:SetPoint("TOPLEFT", 22, -245 - (index - 1) * 64)
         row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 10})
         row:SetBackdropBorderColor(0.3, 0.3, 0.23, 1)
-        row.player = font(row, 14, 12, -10, 340, "", GOLD)
-        row.balance = font(row, 12, 12, -32, 340, "")
-        row.context = font(row, 10, 12, -50, 340, "", MUTED)
+        row.player = font(row, 14, 12, -8, 340, "", GOLD)
+        row.balance = font(row, 12, 12, -29, 340, "")
+        row.context = font(row, 10, 12, -44, 340, "", MUTED)
         row.player:SetMaxLines(1); row.player:SetHeight(18)
         row.balance:SetMaxLines(1); row.balance:SetHeight(15)
         row.context:SetMaxLines(1); row.context:SetHeight(13)
@@ -352,10 +361,10 @@ local function buildMain()
         UI.rows[index] = row
     end
     UI.empty = font(f, 14, 42, -301, 320, "")
-    UI.previous = button(f, "<", 36, 22, -637, function() UI.page = UI.page - 1; UI.selected = nil; IOU.Refresh() end)
-    UI.pages = font(f, 11, 71, -645, 250, "", MUTED)
-    UI.next = button(f, ">", 36, 352, -637, function() UI.page = UI.page + 1; UI.selected = nil; IOU.Refresh() end)
-    UI.detail = panel(f, 535, 426, 403, -245)
+    UI.previous = button(f, "<", 36, 22, -580, function() UI.page = UI.page - 1; UI.selected = nil; IOU.Refresh() end)
+    UI.pages = font(f, 11, 71, -588, 250, "", MUTED)
+    UI.next = button(f, ">", 36, 352, -580, function() UI.page = UI.page + 1; UI.selected = nil; IOU.Refresh() end)
+    UI.detail = panel(f, 535, 361, 403, -245)
     local d = UI.detail
     UI.peer = font(d, 21, 16, -16, 500, "", GOLD)
     UI.peer:SetMaxLines(1); UI.peer:SetHeight(27)
@@ -364,26 +373,54 @@ local function buildMain()
     UI.balance:SetHeight(30)
     UI.balance:SetMaxLines(1)
     UI.due = font(d, 11, 16, -108, 500, "", MUTED)
-    UI.detailScroll, UI.detailContent = scroll(d, 474, 196, 16, -139)
-    UI.pay = button(d, "Record payment", 164, 16, -351, function() IOU.ShowAction("payment") end)
-    UI.settle = button(d, "Settle IOU", 140, 190, -351, function() IOU.ShowAction("settle") end)
-    UI.edit = button(d, "Edit details", 114, 16, -389, function() IOU.ShowEdit() end)
-    UI.cancel = button(d, "Cancel IOU", 190, 140, -389, function()
-        local entry = L.Get(IOU.GetLedger(), UI.selected)
-        if entry then IOU.ShowAction(L.Status(entry) == "cancelled" and "restore" or "cancel") end
+    UI.detailScroll, UI.detailContent = scroll(d, 474, 174, 16, -139)
+    UI.historyToggle = button(d, "History", 100, 16, -325, function()
+        UI.historyExpanded = not UI.historyExpanded; IOU.Refresh(); UI.detailScroll:SetVerticalScroll(0)
     end)
-    UI.historyPrevious = button(d, "<", 30, 360, -389, function()
+    UI.more = button(d, "More...", 100, 411, -325, function() IOU.ShowMore() end)
+    local menu = panel(d, 196, 170, 320, -151)
+    UI.moreMenu = menu
+    menu:SetFrameLevel(d:GetFrameLevel() + 12)
+    local function action(run)
+        return function()
+            local entry = L.Get(IOU.GetLedger(), menu.entryID)
+            menu:Hide()
+            if not entry or entry ~= menu.entry or UI.selected ~= menu.entryID then
+                IOU.Message("That IOU changed. Open More again."); return
+            end
+            run(entry)
+        end
+    end
+    UI.pay = button(menu, "Record payment", 176, 10, -10, action(function(entry) IOU.ShowAction("payment", entry.id) end))
+    UI.settle = button(menu, "Mark paid", 176, 10, -48, action(function(entry) IOU.ShowAction("settle", entry.id) end))
+    UI.edit = button(menu, "Edit", 176, 10, -86, action(function() IOU.ShowEdit() end))
+    UI.cancel = button(menu, "Cancel IOU", 176, 10, -124, action(function(entry)
+        IOU.ShowAction(L.Status(entry) == "cancelled" and "restore" or "cancel", entry.id)
+    end))
+    menu:Hide()
+    f:HookScript("OnHide", function() menu:Hide() end)
+    UI.historyPrevious = button(d, "<", 30, 130, -325, function()
         UI.historyPage = math.max(1, (UI.historyPage or 1) - 1); IOU.Refresh(); UI.detailScroll:SetVerticalScroll(0)
     end)
-    UI.historyPages = font(d, 10, 397, -398, 75, "", MUTED)
-    UI.historyNext = button(d, ">", 30, 481, -389, function()
+    UI.historyPages = font(d, 10, 172, -334, 65, "", MUTED)
+    UI.historyNext = button(d, ">", 30, 242, -325, function()
         UI.historyPage = (UI.historyPage or 1) + 1; IOU.Refresh(); UI.detailScroll:SetVerticalScroll(0)
     end)
-    font(f, 10, 24, -698, 905, "Personal records only. Gold totals exclude items and favors. Saved automatically on logout or /reload.", MUTED)
+    font(f, 10, 24, -622, 905, "Your records", MUTED)
+end
+
+function IOU.ShowMore()
+    if not UI.moreMenu then return end
+    if UI.moreMenu:IsShown() then UI.moreMenu:Hide(); return end
+    local entry = L.Get(IOU.GetLedger(), UI.selected)
+    if not entry then return end
+    UI.moreMenu.entry, UI.moreMenu.entryID = entry, entry.id
+    UI.moreMenu:Show()
 end
 
 function IOU.Refresh(reset)
     if not UI.main then return end
+    if UI.moreMenu then UI.moreMenu:Hide() end
     IOU.RenderSharedAttention(sharedAttention())
     local db = IOU.GetLedger()
     if not db then return end
@@ -392,8 +429,12 @@ function IOU.Refresh(reset)
     for index, direction in ipairs({"owed", "owe"}) do
         local sum = L.Summary(db, direction, searchText(), options())
         UI.cards[index].caption:SetText(UI.cards[index].title .. ((UI.search:GetText() ~= "" or UI.kind ~= "all") and " / FILTERED" or ""))
-        UI.cards[index].value:SetText(L.FormatMoney(sum.money))
-        UI.cards[index].counts:SetText(sum.active .. " open IOUs\n" .. sum.items .. " item / " .. sum.favors .. " favor\n" .. (sum.overdue or 0) .. " overdue")
+        UI.cards[index].value:SetText(money(sum.money))
+        local counts = {}
+        if sum.items > 0 then counts[#counts + 1] = sum.items .. (sum.items == 1 and " item IOU" or " item IOUs") end
+        if sum.favors > 0 then counts[#counts + 1] = sum.favors .. (sum.favors == 1 and " favor" or " favors") end
+        if (sum.overdue or 0) > 0 then counts[#counts + 1] = sum.overdue .. " overdue" end
+        UI.cards[index].counts:SetText(table.concat(counts, "\n"))
     end
     for tab, b in pairs(UI.tabs) do b:SetEnabled(UI.tab ~= tab) end
     for kind, b in pairs(UI.typeButtons) do b:SetEnabled(UI.kind ~= kind) end
@@ -415,8 +456,9 @@ function IOU.Refresh(reset)
             row.player:SetText(literal(e.player))
             row.balance:SetText(amount(e, L.Balance(e)))
             local overdue = L.IsOverdue(e, time())
-            row.context:SetText((e.kind == "money" and "Gold" or e.kind == "item" and "Items" or "Favor")
-                .. "  /  " .. L.Status(e) .. "  /  #" .. e.id .. (overdue and "  /  OVERDUE" or ""))
+            local status = L.Status(e)
+            row.context:SetText(overdue and "Overdue" or status == "cancelled" and "Cancelled"
+                or status == "settled" and "Paid" or "")
             row.context:SetTextColor(unpack(overdue and {1, 0.4, 0.3} or MUTED))
             row:SetBackdropColor(e.id == UI.selected and 0.19 or 0.10, e.id == UI.selected and 0.18 or 0.12, 0.10, 1)
             row:Show()
@@ -430,20 +472,23 @@ function IOU.Refresh(reset)
     UI.settle:SetEnabled(selected ~= nil and not cancelled and L.Balance(selected) > 0)
     UI.edit:SetEnabled(selected ~= nil and not cancelled)
     UI.cancel:SetEnabled(selected ~= nil and (cancelled or L.Balance(selected) > 0))
-    UI.cancel:SetText(cancelled and "Restore IOU" or "Cancel IOU")
+    UI.cancel:SetText(cancelled and "Reopen" or "Cancel IOU")
+    UI.more:SetEnabled(selected ~= nil)
+    UI.historyToggle:SetEnabled(selected ~= nil)
     if not selected then
         UI.peer:SetText("Your IOUs")
-        UI.context:SetText("Select an IOU to see its history.")
+        UI.context:SetText("Select a player.")
         UI.balance:SetText("")
         UI.due:SetText("")
         return
     end
     UI.peer:SetText(literal(selected.player))
-    UI.context:SetText("#" .. selected.id .. "  /  " .. (selected.direction == "owed" and "Owed to you" or "You owe")
-        .. "  /  " .. L.Status(selected))
+    local status = L.Status(selected)
+    UI.context:SetText((selected.direction == "owed" and "Owes you" or "You owe")
+        .. (status == "cancelled" and " / Cancelled" or status == "settled" and " / Paid" or ""))
     UI.balance:SetText(amount(selected, L.Balance(selected)))
     local overdue = L.IsOverdue(selected, time())
-    UI.due:SetText((selected.due or 0) > 0 and ((overdue and "OVERDUE / " or "Due / ") .. IOU.FormatDueDate(selected.due)) or "No due date")
+    UI.due:SetText((selected.due or 0) > 0 and ((overdue and "Overdue / " or "Due ") .. IOU.FormatDueDate(selected.due)) or "")
     UI.due:SetTextColor(unpack(overdue and {1, 0.4, 0.3} or MUTED))
     UI.pay:SetText(selected.kind == "money" and "Record payment" or "Record delivery")
 end
@@ -489,64 +534,69 @@ function IOU.RenderTimeline(entry)
         y = y - height - 12
     end
     local entryID, eventCount = entry and entry.id, entry and #entry.events or 0
+    if UI.timelineEntry ~= entryID then UI.historyExpanded = false end
     if UI.timelineEntry ~= entryID or UI.timelineEventCount ~= eventCount then UI.historyPage = 1 end
     local pageCount = math.max(1, math.ceil(eventCount / 10))
     UI.historyPage = math.max(1, math.min(UI.historyPage or 1, pageCount))
     UI.historyPrevious:SetEnabled(UI.historyPage > 1)
     UI.historyNext:SetEnabled(UI.historyPage < pageCount)
     UI.historyPages:SetText(UI.historyPage .. " / " .. pageCount)
+    UI.historyPrevious:SetShown(entry ~= nil and UI.historyExpanded)
+    UI.historyNext:SetShown(entry ~= nil and UI.historyExpanded)
+    UI.historyPages:SetShown(entry ~= nil and UI.historyExpanded)
+    UI.historyToggle:SetText(UI.historyExpanded and "Hide history" or "History")
     if entry then
         local initial = entry.initial or entry
         local original = {kind=entry.kind, label=initial.label}
-        line("Player: " .. literal(entry.player), GOLD)
-        line("Original agreement: " .. amount(original, entry.amount), GOLD)
-        if entry.kind ~= "money" then line("Description: " .. labelText(entry)) end
+        line("Original " .. amount(original, entry.amount) .. " / Paid " .. amount(entry, entry.amount - L.Balance(entry)), MUTED)
         if entry.note ~= "" then
             local preview, shortened = notePreview(entry.note)
-            line("Agreement notes\n" .. preview, nil, nil, shortened and entry.note or nil)
+            line(preview, nil, nil, shortened and entry.note or nil)
         end
-        line("TRANSACTION HISTORY  /  PAGE " .. UI.historyPage .. " OF " .. pageCount, GOLD)
-        local reversed = {}
-        for _, event in ipairs(entry.events) do if event.type == "reversal" then reversed[event.reverses] = true end end
-        local first = #entry.events - (UI.historyPage - 1) * 10
-        for index = first, math.max(1, first - 9), -1 do
-            local e = entry.events[index]
-            local text, fullNote
-            local preview, shortened = notePreview(e.note)
-            if shortened then fullNote = e.note end
-            if e.type == "reversal" then
-                text = dateText(e.at) .. "  /  Reversed payment #" .. e.reverses .. "\nReason: " .. preview
-            elseif e.type == "cancel" or e.type == "restore" then
-                text = dateText(e.at) .. "  /  " .. (e.type == "cancel" and "IOU cancelled (balance retained)" or "IOU restored")
-                    .. "\nReason: " .. preview
-            elseif e.type == "amendment" then
-                text = dateText(e.at) .. "  /  Details updated #" .. e.id
-                if e.before.player ~= e.after.player then text = text .. "\nPlayer: " .. literal(e.before.player) .. " -> " .. literal(e.after.player) end
-                if e.before.label ~= e.after.label then
-                    text = text .. "\nDescription: " .. labelText({label=e.before.label, kind=entry.kind})
-                        .. " -> " .. labelText({label=e.after.label, kind=entry.kind})
+        if UI.historyExpanded then
+            line("History / IOU #" .. entry.id, GOLD)
+            local reversed = {}
+            for _, event in ipairs(entry.events) do if event.type == "reversal" then reversed[event.reverses] = true end end
+            local first = #entry.events - (UI.historyPage - 1) * 10
+            for index = first, math.max(1, first - 9), -1 do
+                local e = entry.events[index]
+                local text, fullNote
+                local preview, shortened = notePreview(e.note)
+                if shortened then fullNote = e.note end
+                if e.type == "reversal" then
+                    text = dateText(e.at) .. "  /  Reversed payment #" .. e.reverses .. "\nReason: " .. preview
+                elseif e.type == "cancel" or e.type == "restore" then
+                    text = dateText(e.at) .. "  /  " .. (e.type == "cancel" and "IOU cancelled (balance retained)" or "IOU restored")
+                        .. "\nReason: " .. preview
+                elseif e.type == "amendment" then
+                    text = dateText(e.at) .. "  /  Details updated #" .. e.id
+                    if e.before.player ~= e.after.player then text = text .. "\nPlayer: " .. literal(e.before.player) .. " -> " .. literal(e.after.player) end
+                    if e.before.label ~= e.after.label then
+                        text = text .. "\nDescription: " .. labelText({label=e.before.label, kind=entry.kind})
+                            .. " -> " .. labelText({label=e.after.label, kind=entry.kind})
+                    end
+                    if e.before.due ~= e.after.due then
+                        local before, after = IOU.FormatDueDate(e.before.due), IOU.FormatDueDate(e.after.due)
+                        text = text .. "\nDue: " .. (before ~= "" and before or "none") .. " -> " .. (after ~= "" and after or "none")
+                    end
+                    text = text .. "\nReason: " .. preview
+                else
+                    text = dateText(e.at) .. "  /  " .. (entry.kind == "money" and "Payment" or "Delivery") .. " #" .. e.id
+                        .. "\n" .. amount(entry, e.amount) .. (reversed[e.id] and "  (reversed)" or "")
+                    if e.note ~= "" then text = text .. "\n" .. preview end
                 end
-                if e.before.due ~= e.after.due then
-                    local before, after = IOU.FormatDueDate(e.before.due), IOU.FormatDueDate(e.after.due)
-                    text = text .. "\nDue: " .. (before ~= "" and before or "none") .. " -> " .. (after ~= "" and after or "none")
+                line(text, nil, e.type == "payment" and L.Status(entry) ~= "cancelled" and not reversed[e.id] and e.id or nil, fullNote)
+                if e.type == "amendment" and e.before.note ~= e.after.note then
+                    for _, change in ipairs({{"Previous note", e.before.note}, {"Updated note", e.after.note}}) do
+                        local textPreview, cropped = notePreview(change[2])
+                        line(change[1] .. ":\n" .. (change[2] == "" and "(empty)" or textPreview), MUTED, nil, cropped and change[2] or nil)
+                    end
                 end
-                text = text .. "\nReason: " .. preview
-            else
-                text = dateText(e.at) .. "  /  " .. (entry.kind == "money" and "Payment" or "Delivery") .. " #" .. e.id
-                    .. "\n" .. amount(entry, e.amount) .. (reversed[e.id] and "  (reversed)" or "")
-                if e.note ~= "" then text = text .. "\n" .. preview end
             end
-            line(text, nil, e.type == "payment" and L.Status(entry) ~= "cancelled" and not reversed[e.id] and e.id or nil, fullNote)
-            if e.type == "amendment" and e.before.note ~= e.after.note then
-                for _, change in ipairs({{"Previous note", e.before.note}, {"Updated note", e.after.note}}) do
-                    local textPreview, cropped = notePreview(change[2])
-                    line(change[1] .. ":\n" .. (change[2] == "" and "(empty)" or textPreview), MUTED, nil, cropped and change[2] or nil)
-                end
-            end
+            line(dateText(entry.created) .. "  /  Agreement created for " .. literal(initial.player) .. "\n" .. amount(original, entry.amount), MUTED)
         end
-        line(dateText(entry.created) .. "  /  Agreement created for " .. literal(initial.player) .. "\n" .. amount(original, entry.amount), MUTED)
     end
-    UI.detailContent:SetHeight(math.max(220, -y))
+    UI.detailContent:SetHeight(math.max(174, -y))
     if UI.timelineEntry ~= entryID or UI.timelineEventCount ~= eventCount then UI.detailScroll:SetVerticalScroll(0) end
     UI.timelineEntry, UI.timelineEventCount = entryID, eventCount
 end
@@ -661,10 +711,24 @@ local function installLinkCapture()
     end
 end
 
+local function layoutAdd(f)
+    local y = f.kind == "money" and 285 or 337
+    f.moreOptions:ClearAllPoints(); f.moreOptions:SetPoint("TOPLEFT", 24, -y)
+    f.moreOptions:SetText(f.optionsExpanded and "Fewer options" or "More options")
+    f.optionsGroup:ClearAllPoints(); f.optionsGroup:SetPoint("TOPLEFT", 0, -y - 43)
+    f.optionsGroup:SetShown(f.optionsExpanded)
+    local bottom = y + (f.optionsExpanded and 210 or 39)
+    f.error:ClearAllPoints(); f.error:SetPoint("TOPLEFT", 25, -bottom)
+    f.create:ClearAllPoints(); f.create:SetPoint("TOPLEFT", 332, -bottom - 35)
+    f.dismiss:ClearAllPoints(); f.dismiss:SetPoint("TOPLEFT", 221, -bottom - 35)
+    local height = bottom + 78
+    f:SetHeight(height); fit(f, 506, height)
+end
+
 function IOU.ShowAdd(player)
     showMain()
     if not UI.add then
-        local f = window("IOUAddWindow", 506, 584)
+        local f = window("IOUAddWindow", 506, 420)
         UI.add = f
         font(f, 21, 22, -21, 440, "New IOU", GOLD)
         font(f, 11, 24, -64, 420, "Player's full name", MUTED)
@@ -692,7 +756,7 @@ function IOU.ShowAdd(player)
         f.money = moneyFields(f.moneyGroup, 25, -210)
         f.unitGroup = CreateFrame("Frame", nil, f)
         f.unitGroup:SetAllPoints(f)
-        font(f.unitGroup, 11, 25, -210, 440, "Quantity (whole units)", MUTED)
+        font(f.unitGroup, 11, 25, -210, 440, "Quantity", MUTED)
         f.quantity = edit(f.unitGroup, 100, 29, -230, 9, true)
         f.labelCaption = font(f.unitGroup, 11, 25, -272, 445, "Item name or shift-click an item here", MUTED)
         f.label = edit(f.unitGroup, 445, 29, -292, 512)
@@ -703,22 +767,31 @@ function IOU.ShowAdd(player)
                 for value, b in pairs(f.kindButtons) do b:SetEnabled(value ~= key) end
                 f.moneyGroup:SetShown(key == "money")
                 f.unitGroup:SetShown(key ~= "money")
-                f.labelCaption:SetText(key == "item" and "Item name or shift-click an item here" or "Favor / unit (e.g. minutes of enchanting help)")
+                f.labelCaption:SetText(key == "item" and "Item name or shift-click an item" or "Favor / unit")
+                layoutAdd(f)
                 if key == "money" then f.money[1]:SetFocus() else f.quantity:SetFocus(); f.quantity:HighlightText() end
             end)
         end
-        font(f, 11, 25, -337, 440, "Due date (optional, YYYY-MM-DD)", MUTED)
-        f.due = edit(f, 200, 29, -357, 10)
-        font(f, 11, 25, -397, 440, "Agreement notes (optional)", MUTED)
-        f.note = multiline(f, 442, 66, 29, -419, 2000)
+        f.moreOptions = button(f, "More options", 145, 24, -285, function()
+            f.optionsExpanded = not f.optionsExpanded
+            if not f.optionsExpanded then f.due:ClearFocus(); f.note:ClearFocus() end
+            layoutAdd(f)
+        end)
+        f.optionsGroup = CreateFrame("Frame", nil, f)
+        f.optionsGroup:SetSize(506, 165)
+        font(f.optionsGroup, 11, 25, 0, 440, "Due date (optional, YYYY-MM-DD)", MUTED)
+        f.due = edit(f.optionsGroup, 200, 29, -20, 10)
+        font(f.optionsGroup, 11, 25, -60, 440, "Note (optional)", MUTED)
+        f.note = multiline(f.optionsGroup, 442, 66, 29, -82, 2000)
         f.error = font(f, 11, 25, -501, 455, "", {1, 0.4, 0.32})
-        button(f, "Create IOU", 145, 332, -540, function()
+        f.error:SetHeight(30)
+        f.create = button(f, "Create IOU", 145, 332, -540, function()
             local value, err
             if f.kind == "money" then value, err = f.money:Read() else value = integer(f.quantity, true) end
             if not value then f.error:SetText(err or "Enter a positive whole quantity."); return end
             local due
             due, err = IOU.ParseDueDate(f.due:GetText())
-            if due == nil then f.error:SetText(err); return end
+            if due == nil then f.optionsExpanded = true; layoutAdd(f); f.error:SetText(err); f.due:SetFocus(); return end
             local e
             e, err = IOU.Add({player = f.player:GetText(), direction = f.direction, kind = f.kind, amount = value,
                 label = f.kind == "money" and "" or f.label:GetText(), note = f.note:GetText(), due = due})
@@ -726,7 +799,8 @@ function IOU.ShowAdd(player)
             UI.search:SetText("")
             focusEntry(e); f:Hide()
         end)
-        button(f, "Cancel", 100, 221, -540, function() f:Hide() end)
+        f.dismiss = button(f, "Cancel", 100, 221, -540, function() f:Hide() end)
+        f:SetScript("OnShow", layoutAdd)
     end
     installLinkCapture()
     local f = UI.add
@@ -734,10 +808,10 @@ function IOU.ShowAdd(player)
     local valid = IOU.PlayerSummary.NameKey(player)
     if not valid or #player > L.MAX_PLAYER then player = "" end
     f.player:SetText(player); f.note:SetText(""); f.quantity:SetText("1"); f.label:SetText(""); f.due:SetText(""); f.money:Fill(0)
-    f.error:SetText(""); f.direction, f.kind = "owed", "money"
+    f.error:SetText(""); f.direction, f.kind, f.optionsExpanded = "owed", "money", false
     for key, b in pairs(f.dirButtons) do b:SetEnabled(key ~= f.direction) end
     for key, b in pairs(f.kindButtons) do b:SetEnabled(key ~= f.kind) end
-    f.moneyGroup:Show(); f.unitGroup:Hide()
+    f.moneyGroup:Show(); f.unitGroup:Hide(); layoutAdd(f)
     f:Show()
     if player ~= "" then f.money[1]:SetFocus() else f.player:SetFocus() end
 end
@@ -824,17 +898,17 @@ function IOU.ShowAction(mode, entryID, eventID)
     local f = UI.action
     f.entry, f.entryID, f.eventID, f.mode = entry, entry.id, eventID, mode
     local remaining = L.Balance(entry)
-    f.title:SetText(mode == "cancel" and "Cancel IOU" or mode == "restore" and "Restore IOU" or mode == "reverse" and "Undo payment / delivery"
-        or mode == "settle" and "Settle IOU" or entry.kind == "money" and "Record payment" or "Record delivery")
-    f.context:SetText(literal(entry.player) .. "  /  #" .. entry.id .. "\nRemaining: " .. amount(entry, remaining))
+    f.title:SetText(mode == "cancel" and "Cancel IOU" or mode == "restore" and "Reopen IOU" or mode == "reverse" and "Undo payment"
+        or mode == "settle" and "Mark paid" or entry.kind == "money" and "Record payment" or "Record delivery")
+    f.context:SetText(literal(entry.player) .. "\nRemaining: " .. amount(entry, remaining))
     f.moneyGroup:SetShown(mode == "payment" and entry.kind == "money")
     f.unitsGroup:SetShown(mode == "payment" and entry.kind ~= "money")
-    f.explanation:SetText(mode == "reverse" and "Adds a reversal to the history. The original payment stays visible."
-        or mode == "settle" and "Records the entire remaining balance as paid or delivered."
-        or mode == "cancel" and "Moves this IOU to History without recording payment. Its balance and audit trail stay intact."
-        or mode == "restore" and "Reopens this cancelled IOU with the same balance and history." or "")
+    f.explanation:SetText(mode == "reverse" and "Returns this payment to the balance."
+        or mode == "settle" and "Marks the remaining balance as paid."
+        or mode == "cancel" and "Moves this IOU to History."
+        or mode == "restore" and "Returns this IOU to your open records." or "")
     f.noteCaption:SetText((mode == "reverse" or mode == "cancel" or mode == "restore") and "Reason (optional)" or "Payment / delivery notes (optional)")
-    f.confirm:SetText(mode == "cancel" and "Cancel IOU" or mode == "restore" and "Restore IOU" or mode == "reverse" and "Record reversal" or mode == "settle" and "Settle IOU" or "Record")
+    f.confirm:SetText(mode == "cancel" and "Cancel IOU" or mode == "restore" and "Reopen" or mode == "reverse" and "Undo payment" or mode == "settle" and "Mark paid" or "Record")
     f.note:SetText(""); f.error:SetText(""); f.money:Fill(remaining); f.quantity:SetText(tostring(remaining))
     f:Show()
 end
@@ -1019,4 +1093,4 @@ end
 
 -- The shared agreement view uses the same ordinary frame styling and controls.
 UI.Helpers = {font=font, panel=panel, button=button, edit=edit, scroll=scroll,
-    window=window, literal=literal, moneyFields=moneyFields, multiline=multiline}
+    window=window, literal=literal, money=money, moneyFields=moneyFields, multiline=multiline}

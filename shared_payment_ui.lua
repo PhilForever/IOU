@@ -2,10 +2,14 @@ local _, IOU = ...
 local UI, S, C = IOU.UI, IOU.SharedService, IOU.SharedCodec
 local H = UI.Helpers
 local GOLD, MUTED = {0.88,0.73,0.42}, {0.65,0.66,0.63}
-local function money(value) return IOU.Ledger.FormatMoney(value) end
+local function money(value) return H.money and H.money(value) or IOU.Ledger.FormatMoney(value) end
 local function reference(id)
     local number=type(id)=="string" and id:match("%-(%d+)$")
     return number and "#"..number or id
+end
+local function shortReference(id)
+    local number=type(id)=="string" and id:match("%-(%d+)$")
+    return number and "#"..number or "(see Details)"
 end
 local function eventState(event)
     if event.localClosed then return "Paused; reviewed locally" end
@@ -36,6 +40,41 @@ local function eligible(view)
         if event.kind == "GOLD_PAYMENT" and event.effective and not event.reversed then result[#result+1]=event end
     end
     return result
+end
+
+function IOU.SharedPaymentSummary(offer,overview,review)
+    local terms=termsOf(offer)
+    local parent=parentOf(offer,overview)
+    local original=termsOf(parent)
+    if not terms or not original then return "Original IOU unavailable." end
+    local view=overview and overview.balances[parent.offerId]
+    if not overview then view=S.GetBalance(parent.offerId) end
+    local text={}
+    if terms.kind=="GOLD_OBLIGATION" then
+        text[#text+1]=original.debtor.." owes "..original.creditor
+        text[#text+1]="Remaining "..money(view and view.remainingCopper or original.amountCopper)
+        text[#text+1]="Original "..money(original.amountCopper).."  /  Paid "..money(view and view.paidCopper or 0)
+    else
+        text[#text+1]="Original IOU: "..money(original.amountCopper)
+        if not review then text[#text+1]=original.debtor.." owes "..original.creditor end
+        local rows=C.ParseChain(terms.baseChain) or {}
+        local before=original.amountCopper
+        local target
+        for _,event in ipairs(rows) do
+            before=before+(event.kind=="GOLD_PAYMENT" and -event.amountCopper or event.amountCopper)
+            if event.offerId==terms.reversesId then target=event end
+        end
+        if terms.kind=="GOLD_CORRECTION" then
+            text[#text+1]="Undo payment "..shortReference(terms.reversesId)
+            if review and target and target.note~="" then text[#text+1]="Payment note: "..target.note end
+        end
+        text[#text+1]="Balance: "..money(before).." -> "..money(before+(terms.kind=="GOLD_PAYMENT" and -terms.amountCopper or terms.amountCopper))
+    end
+    if review then
+        if original.dueUTC~=0 then text[#text+1]="Original due: "..due(original.dueUTC) end
+        if original.note~="" then text[#text+1]="Original note: "..original.note end
+    end
+    return table.concat(text,"\n")
 end
 
 function IOU.SharedPaymentDetails(offer,overview)
@@ -110,19 +149,43 @@ local function current(f)
     end
     return view
 end
+local function point(frame,x,y)
+    frame:ClearAllPoints(); frame:SetPoint("TOPLEFT",x,y)
+end
+local function formLayout(f)
+    local contextHeight=f.showDetails and 200 or 124
+    f.scroll:SetHeight(contextHeight)
+    local cursor=68+contextHeight+18
+    if f.mode=="correction" then
+        for index,row in ipairs(f.rows) do point(row,24,-cursor-(index-1)*44) end
+        point(f.previous,24,-cursor-134); point(f.next,638,-cursor-134); point(f.pages,74,-cursor-142)
+        point(f.targetText,24,-cursor-174); cursor=cursor+214
+    else
+        point(f.targetText,24,-cursor); cursor=cursor+40
+    end
+    local moneyShown=f.mode=="payment"
+    f.moneyGroup:SetShown(moneyShown)
+    for _,box in ipairs(f.money) do box:SetShown(moneyShown) end
+    if moneyShown then point(f.moneyGroup,24,-cursor); cursor=cursor+76 end
+    point(f.noteCaption,24,-cursor); point(f.note,28,-cursor-22)
+    point(f.status,24,-cursor-64); point(f.send,24,-cursor-118); point(f.back,524,-cursor-118)
+    local height=cursor+168
+    f:SetHeight(height)
+    f:SetScale(math.max(0.4,math.min(1,(UIParent:GetWidth()-32)/700,(UIParent:GetHeight()-32)/height)))
+end
 local function refreshForm(f)
     local view, err=current(f)
     if not view then f.send:SetEnabled(false); f.status:SetText(H.literal(err)); return end
     local parent=S.GetOffer(f.parentId)
-    local text=IOU.SharedPaymentDetails(parent)
+    local text=f.showDetails and IOU.SharedPaymentDetails(parent) or IOU.SharedPaymentSummary(parent)
     if f.paymentId then
         local payment=S.GetOffer(f.paymentId)
         local terms=termsOf(payment)
-        text=text .. "\n\nSelected payment: " .. reference(f.paymentId) .. "\nAmount: " .. money(terms.amountCopper)
-            .. "\nFull payment note: " .. (terms.note=="" and "(none)" or terms.note)
+        text=text .. "\n\nUndo payment " .. shortReference(f.paymentId) .. ": " .. money(terms.amountCopper)
+        if terms.note~="" then text=text.."\n"..terms.note end
     end
     f.context:SetText(H.literal(text))
-    f.content:SetHeight(math.max(200,f.context:GetStringHeight()+16))
+    f.content:SetHeight(math.max(f.showDetails and 200 or 124,f.context:GetStringHeight()+16))
     local items=eligible(view)
     local correction=f.mode=="correction"
     f.page=math.max(1,math.min(f.page or 1,math.max(1,math.ceil(#items/3))))
@@ -130,16 +193,17 @@ local function refreshForm(f)
         local item=correction and items[(f.page-1)*3+index]
         if item then
             row.paymentId,row.offerId=item.offerId,item.offerId
-            row:SetText((item.offerId==f.paymentId and "Selected payment " or "Choose payment ") .. reference(item.offerId) .. " / " .. money(item.amountCopper)); row:Show()
+            row:SetText((item.offerId==f.paymentId and "Selected " or "Payment ") .. shortReference(item.offerId) .. " / " .. money(item.amountCopper)); row:Show()
         else row.paymentId=nil; row:Hide() end
     end
     f.previous:SetShown(correction); f.next:SetShown(correction); f.pages:SetShown(correction)
     f.previous:SetEnabled(f.page>1); f.next:SetEnabled(f.page*3<#items)
     f.pages:SetText("Payments " .. f.page .. " / " .. math.max(1,math.ceil(#items/3)))
-    f.targetText:SetText(correction and "Select one confirmed payment above to reverse in full."
-        or f.mode=="settle" and "Propose the entire remaining balance shown above."
-        or "Enter a partial payment. The other player must review it.")
+    f.targetText:SetText(correction and "Choose the payment to undo."
+        or f.mode=="settle" and "They must confirm this balance is paid."
+        or "They must confirm this payment.")
     f.send:SetEnabled(not correction or f.paymentId~=nil)
+    formLayout(f)
 end
 
 function IOU.RefreshSharedPayments(selected,overview)
@@ -160,9 +224,21 @@ function IOU.RefreshSharedPayments(selected,overview)
     board.payment:SetEnabled(ready and view.remainingCopper>0 or false)
     board.settle:SetEnabled(ready and view.remainingCopper>0 or false)
     board.correction:SetEnabled(ready and #eligible(view)>0 or false)
-    board.payment:SetShown(ready and view.remainingCopper>0 or false)
-    board.settle:SetShown(ready and view.remainingCopper>0 or false)
-    board.correction:SetShown(ready and #eligible(view)>0 or false)
+    local menuOpen=board.moreOpen==true
+    board.payment:SetShown(menuOpen and ready and view.remainingCopper>0 or false)
+    board.settle:SetShown(menuOpen and ready and view.remainingCopper>0 or false)
+    board.correction:SetShown(menuOpen and ready and #eligible(view)>0 or false)
+    if board.moreMenu then
+        local y=-12
+        for _,entry in ipairs({board.payment,board.settle,board.correction,board.filterButtons.all,board.backups}) do
+            local show=menuOpen and (entry==board.filterButtons.all or entry==board.backups or entry:IsShown())
+            entry:SetShown(show)
+            if show then entry:ClearAllPoints(); entry:SetPoint("TOPLEFT",12,y); y=y-36 end
+        end
+        local height=math.max(60,12-y)
+        board.moreMenu:SetHeight(height); board.moreMenu:ClearAllPoints()
+        board.moreMenu:SetPoint("TOPLEFT",686,-(704-height)); board.moreMenu:SetShown(menuOpen)
+    end
     local f=UI.sharedPaymentForm
     if f and f:IsShown() and (not overview or board.paymentOverview ~= overview) then refreshForm(f) end
     board.paymentOverview=overview
@@ -180,9 +256,14 @@ function IOU.ShowSharedPayment(id,mode)
     if mode~="correction" and view.remainingCopper==0 then return end
     if mode=="correction" and #eligible(view)==0 then return end
     if not UI.sharedPaymentForm then
-        local f=H.window("IOUSharedPaymentWindow",700,740)
+        local f=H.window("IOUSharedPaymentWindow",700,494)
         UI.sharedPaymentForm=f
-        f.title=H.font(f,21,22,-22,640,"",GOLD)
+        f.title=H.font(f,21,22,-22,490,"",GOLD)
+        f.detailToggle=H.button(f,"Details",116,536,-22,function()
+            f.showDetails=not f.showDetails
+            f.detailToggle:SetText(f.showDetails and "Hide details" or "Details")
+            refreshForm(f); f.scroll:SetVerticalScroll(0)
+        end)
         f.scroll,f.content=H.scroll(f,628,200,24,-68)
         f.context=H.font(f.content,12,0,0,616,"")
         f.rows={}
@@ -206,7 +287,7 @@ function IOU.ShowSharedPayment(id,mode)
         f.noteCaption=H.font(f,11,24,-558,648,"",MUTED)
         f.note=H.edit(f,640,28,-580,512)
         f.status=H.font(f,12,24,-623,648,"",GOLD); f.status:SetHeight(46)
-        f.send=H.button(f,"Send for acknowledgment",320,24,-690,function()
+        f.send=H.button(f,"Send request",320,24,-690,function()
             local latest,problem=current(f)
             if not latest then f.status:SetText(H.literal(problem)); f.send:SetEnabled(false); return end
             local offer,saved
@@ -224,16 +305,18 @@ function IOU.ShowSharedPayment(id,mode)
             IOU.SelectSharedOffer((offer or saved).offerId,not offer and problem or nil)
             f:Hide(); IOU.RefreshShared()
         end)
-        H.button(f,"Back",148,524,-690,function() f:Hide() end)
+        f.back=H.button(f,"Back",148,524,-690,function() f:Hide() end)
         f.note:SetScript("OnEscapePressed",function() f:Hide() end)
         for _,box in ipairs(f.money) do box:SetScript("OnEscapePressed",function() f:Hide() end) end
         f:SetScript("OnHide",function() f.note:ClearFocus(); for _,box in ipairs(f.money) do box:ClearFocus() end end)
+        f:HookScript("OnShow",function() formLayout(f) end)
     end
     local f=UI.sharedPaymentForm
     f.parentId,f.parentTerms,f.base,f.peer=parent.offerId,parent.terms,view.baseChain,S.GetPeer()
     f.mode,f.remaining,f.paymentId,f.paymentTerms,f.page=mode,view.remainingCopper,nil,nil,1
-    f.title:SetText(mode=="correction" and "Reverse a shared payment" or mode=="settle" and "Settle shared gold balance" or "Record a shared payment")
-    f.noteCaption:SetText(mode=="correction" and "Reason (optional; blank records 'No reason provided')" or "Payment note (optional; plain text)")
+    f.showDetails=false; f.detailToggle:SetText("Details")
+    f.title:SetText(mode=="correction" and "Undo shared payment" or mode=="settle" and "Mark shared IOU paid" or "Adjust shared payment")
+    f.noteCaption:SetText(mode=="correction" and "Reason (optional)" or "Note (optional)")
     f.money:Fill(mode=="settle" and view.remainingCopper or 0)
     for _,box in ipairs(f.money) do box:SetEnabled(mode=="payment") end
     f.note:SetText(""); f.status:SetText(""); f.scroll:SetVerticalScroll(0)
