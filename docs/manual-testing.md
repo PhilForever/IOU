@@ -1,6 +1,14 @@
 # Testing IOU 1.0
 
-**Live verification of changes from 0.7 onward is pending.** This is a short ordinary-play check, not a request for screenshots, exports, diagnostic reports, or repeated backup tests. Both players should fully restart WoW with **1.0.0** before the Shared checks.
+**Use 1.0.1 for the next pass.** The first 1.0.0 live pass confirmed a gold repayment and Undo, then exposed item-link, bag-picker, and missing-trade issues. Those fixes still need verification; mail and the new confirmation flow have not been tested live. Updating from 1.0.0 only needs `/reload`; updating from an older release needs a full restart.
+
+Retest these first:
+
+1. **Choose from bags** should list carried items with an empty search and find Linen Cloth when searched. Shift-clicked cloth should display its name without color-token fragments.
+2. With a known remaining balance of **5 Linen Cloth**, receive **2**, then **2** again: expect **3**, then **1**, with both transfers in Activity.
+3. Receive unrelated items, then pay an existing **10s** debt: Activity should show both trades and the gold debt should settle. Cancelling a trade must still change nothing.
+
+Previously missed transfers remain unrecorded; adjust their IOU through More if needed before repeating a balance check. A short text result is enough. Mail and player confirmation can wait until these pass.
 
 Use small amounts and ordinary materials. Finish or undo one example before creating another with the same player and asset; several open matching debts correctly produce a Review choice.
 
@@ -21,8 +29,8 @@ Use **More** for manual exceptions or to remove temporary test records from acti
 
 ## Two players: optional sharing
 
-1. Both use 1.0.0 with **Options → Requests: on**. No Listen test, pairing, or manually enabled peer is required.
-2. Create a **10s IOU**, enable **Share with player**, and save. The sender sees Sent; the recipient sees Requests. These different views are expected.
+1. Both use 1.0.1 with **Options → Requests: on**. No Listen test, pairing, or manually enabled peer is required.
+2. Create a **10s IOU**, enable **Ask to confirm**, and save. The sender sees Sent; the recipient sees Requests. These different views are expected.
 3. The recipient opens **Review**. Confirm the names, direction, and 10s, then click **Accept**. Before that click, it must remain an unaccepted request. After delivery, each player's ordinary ledger shows the corresponding shared debt once.
 4. Close both addon windows. Complete a **3s** trade in the appropriate direction, then reopen IOU. The local automatic repayment should leave **7s**. After the background exchange, both linked records should agree. If a review is required, its amount and resulting balance must be clear.
 5. Use repayment **Undo**, allow the background exchange, and check that both balances return to 10s. A correction that cannot be reconciled safely must remain for review rather than changing unrelated history.
@@ -46,7 +54,7 @@ For a failure, give the action, expected amount, actual amount/status, which pla
 | 0.3.2 | Two clients completed 4/4 exact ASCII/UTF-8 diagnostic echoes; live Shared payment, correction, and settlement were demonstrated. | Does not establish new background synchronization or trade/mail detection. |
 | 0.5.0 | User reported successful backup checks; supplied private snapshots retained prior records. | The new test offer in those snapshots was interrupted. |
 | 0.6.0 | User confirmed personal and Shared debts appearing in Trade and Tooltip. | Later UI and automatic repayments were not separately verified. |
-| 0.7–1.0 | Automated financial, parser, observer, UI, and simulated two-client checks. | Live testing remains deferred. No new in-game pass is inferred from mocks. |
+| 1.0.0 | First live pass confirmed one gold repayment and Undo; native item links, bags, and later trades failed. | Fixed in 1.0.1; the patch, mail, and the new confirmation flow still need live verification. |
 
 ## Maintainer regression reference
 

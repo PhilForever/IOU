@@ -83,7 +83,10 @@ end
 
 local function literal(value)
     local text=value:gsub("|Hitem:[^|]+|h(%[[^|]+%])|h", "%1")
-    text=text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    -- Native links can use a named item-quality color (|cnIQ1:) rather
+    -- than an eight-digit hex color. Strip both presentation wrappers;
+    -- saved labels and the item's identity remain untouched.
+    text=text:gsub("|cn[%a_][%w_]*:", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     text=text:gsub("[%z\001-\031\127]", " "):gsub("%s+", " ")
     local limit=64
     if #text>limit then
@@ -120,7 +123,7 @@ end
 local function lines(summary)
     local out={}
     if not summary then return out end
-    for _, source in ipairs({{summary.personal,"Your notes"},{summary.shared,"Shared"}}) do
+    for _, source in ipairs({{summary.personal,"Your notes"},{summary.shared,"Confirmed"}}) do
         local owed,owe=debt(source[1].owed),debt(source[1].owe)
         if owed~="" then out[#out+1]={source=source[2],text="Owes you "..owed} end
         if owe~="" then out[#out+1]={source=source[2],text="You owe "..owe} end

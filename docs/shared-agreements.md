@@ -1,14 +1,14 @@
-# Shared IOUs
+# Confirmed IOUs and requests
 
 Sharing lets both players acknowledge the same gold or item IOU. Personal IOUs work without sharing or the other player installing the addon.
 
 ## Send and accept
 
-1. Create an ordinary IOU and enable **Share with player**, or select an open record and click **Share IOU**.
+1. Create an ordinary IOU and enable **Ask to confirm**, or select an open record and click **Send request**.
 2. The recipient opens **Requests**, checks the player, direction, amount/item, and any note, then chooses **Accept** or **Decline**.
 3. After the exchange completes, the accepted IOU appears in the ordinary ledger on both clients. Linked copies count once in reminders.
 
-Both players need **1.0.0** and **Options → Requests: on**. There is no routine Listen test or repeated pairing. Requests also offers **+ Share IOU** for a new gold/item proposal. The sender sees Sent while the recipient sees Requests; that is the same offer awaiting a decision.
+Both players should use the current version and **Options → Requests: on**. There is no routine Listen test or repeated pairing. Requests also offers **+ New request** for a new gold/item proposal. The sender sees Sent while the recipient sees Requests; that is the same offer awaiting a decision. Accepted debts are marked **Confirmed**.
 
 A new loan is never accepted automatically. Closing Requests or a review does not accept terms and does not interrupt routine background delivery. Incoming messages do not open windows or take focus.
 

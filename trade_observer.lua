@@ -10,6 +10,7 @@ local initialized, frame, active, closed
 local quarantineUntil = 0
 local status = "Waiting for a completed trade."
 local submitted, ignored = 0, 0
+local acceptedSnapshots, unreadableSnapshots, closingSnapshots = 0, 0, 0
 local GRACE, MAX_INTEGER = 4, 9007199254740991
 local EVENTS = {"TRADE_SHOW", "TRADE_UPDATE", "TRADE_MONEY_CHANGED",
     "PLAYER_TRADE_MONEY", "TRADE_CURRENCY_CHANGED", "PLAYER_TRADE_CURRENCY",
@@ -53,6 +54,22 @@ local function invalidate(message)
     closed = nil
     status = message
 end
+local function retainClosingSnapshot()
+    -- The native TRADE_CLOSED handler hides TradeFrame before later event
+    -- listeners run. Its OnHide clears the money input and calls CloseTrade;
+    -- those synchronous teardown notifications can precede our TRADE_CLOSED.
+    -- Keep only a previously accepted immutable snapshot in that case. A
+    -- typed completion is still required, and explicit cancellation clears it.
+    if not active or not active.snapshot or not TradeFrame
+        or type(TradeFrame.IsShown) ~= "function" then return false end
+    local ok, shown = pcall(TradeFrame.IsShown, TradeFrame)
+    if not ok or not plain(shown) or shown ~= false then return false end
+    if not active.closing then
+        closingSnapshots = math.min(closingSnapshots+1, 9999)
+        active.closing = true
+    end
+    return true
+end
 local function money(fn)
     if type(fn) ~= "function" then return nil end
     local ok, amount = pcall(fn)
@@ -71,15 +88,16 @@ local function readItem(info, linkAPI, slot, target)
     if type(name) ~= "string" or name == "" or #name > 200
         or name:find("[%z\001-\031\127|]") or not integer(quantity, 1000000000) or quantity < 1
         or not integer(itemID, 2147483647) or itemID < 1
-        or type(link) ~= "string" or #link > 512 or link:find("[%z\001-\031\127]") then
+        or type(link) ~= "string" or #link > 512 or link:find("[%z\001-\031\127]")
+        or not link:find("|Hitem:",1,true) then
         return nil, false
     end
-    -- A complete item link is required for variant-aware repayment matching.
-    local payload = link:match("^|c%x%x%x%x%x%x%x%x|Hitem:([^|]+)|h%[[^|]*%]|h|r$")
-        or link:match("^|Hitem:([^|]+)|h%[[^|]*%]|h$")
-    if not payload or not payload:match("^[%d:%-]+$") then return nil, false end
-    local linkedID = payload:match("^(%d+):") or payload:match("^(%d+)$")
-    if not linkedID or tonumber(linkedID) ~= itemID then return nil, false end
+    -- Use the same native-link parser as the ledger/matcher. Forever uses
+    -- named quality colors (|cnIQ1:) as well as legacy hexadecimal colors.
+    local codec = IOU.SharedCodec
+    if type(codec) ~= "table" or type(codec.CanonicalItem) ~= "function" then return nil, false end
+    local valid, key, linkedID = pcall(codec.CanonicalItem, link)
+    if not valid or not key or linkedID ~= itemID then return nil, false end
     return {itemID=itemID, link=link, name=name, quantity=quantity}, true
 end
 local function serviceSlot(info, linkAPI, target)
@@ -152,13 +170,15 @@ local function notifySuccess(now)
         status = "Trade recorder is unavailable."
         return
     end
-    local ok, result = pcall(service.Record, value)
+    local ok, result, reason = pcall(service.Record, value)
     if ok and result then
         submitted = math.min(submitted+1, 9999)
         status = "Completed trade recorded."
     else
         ignored = math.min(ignored+1, 9999)
         status = "Completed trade could not be recorded."
+        if ok and plain(reason) and type(reason) == "string" and #reason <= 240
+            and not reason:find("[%z\001-\031\127|]") then status = status.." "..reason end
     end
 end
 local function onEvent(_, event, arg1, arg2)
@@ -187,13 +207,18 @@ local function onEvent(_, event, arg1, arg2)
         status = "Watching this trade."
     elseif event == "TRADE_ACCEPT_UPDATE" then
         if not active then return end
+        if retainClosingSnapshot() then return end
         active.snapshot = nil
+        active.closing = nil
         if accepted(arg1) and accepted(arg2) then
             active.snapshot = snapshot(active)
+            if active.snapshot then acceptedSnapshots=math.min(acceptedSnapshots+1,9999)
+            else unreadableSnapshots=math.min(unreadableSnapshots+1,9999) end
             status = active.snapshot and "Waiting for trade completion." or "Trade contents are unavailable."
         end
     elseif event == "TRADE_UPDATE" then
         if active then
+            if retainClosingSnapshot() then return end
             local _, key = peer()
             if not key or key ~= active.peerKey then
                 invalidate("Trade partner changed; no repayment recorded.")
@@ -225,7 +250,7 @@ local function onEvent(_, event, arg1, arg2)
         -- both-accepted event is required before its contents can be recorded.
         -- After closure these APIs may be cleared by the native TradeFrame;
         -- retain its immutable final snapshot during the completion grace.
-        if active then invalidate("Trade changed; waiting for acceptance.") end
+        if active and not retainClosingSnapshot() then invalidate("Trade changed; waiting for acceptance.") end
     end
 end
 
@@ -252,6 +277,8 @@ function Observer.Report()
     if now then expire(now) end
     return "IOU trade observer\nStatus: "..status
         .."\nCompleted trades submitted: "..submitted.."; recorder failures: "..ignored
+        .."\nAccepted snapshots: "..acceptedSnapshots.."; unreadable contents: "..unreadableSnapshots
+        .."; native closing snapshots retained: "..closingSnapshots
         .."\nCompletion rule: typed ERR_TRADE_COMPLETE and an unchanged accepted snapshot."
         .."\nRead-only capture; enchant slot excluded."
 end

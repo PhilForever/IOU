@@ -2140,7 +2140,7 @@ test("two complete addon sessions agree through framed whispers only after recip
     equal(b.env.IOUDB.sharedByCharacter[b.api.Character()].store.offers[id].state,"COMMITTED")
     assert(same(a.api.GetLedger(),personalA) and same(b.api.GetLedger(),personalB))
     a.api.SelectSharedOffer(id)
-    assert(a.api.UI.shared.details:GetText():find("Agreed",1,true))
+    assert(a.api.UI.shared.details:GetText():find("Confirmed",1,true))
     a.click(a.api.UI.shared.detailToggle)
     assert(a.api.UI.shared.details:GetText():find("their IOU acknowledged",1,true))
     a.api.UI.shared:Hide(); b.api.UI.shared:Hide()

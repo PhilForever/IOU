@@ -49,7 +49,7 @@ function C.BagItems()
         or type(api.GetContainerItemInfo) ~= "function" then
         return {}, "Bag items are unavailable. Shift-click an item instead."
     end
-    local items, byKey = {}, {}
+    local items, byKey, readError = {}, {}, false
     for bag = 0, 4 do
         local ok, slots = pcall(api.GetContainerNumSlots, bag)
         if ok and plain(slots) and type(slots) == "number" and slots >= 0 and slots <= 100 and slots % 1 == 0 then
@@ -66,16 +66,22 @@ function C.BagItems()
                                 itemID=id, quantity=info.stackCount, bag=bag, slot=slot}
                             byKey[key], items[#items + 1] = current, current
                         end
+                    else
+                        readError = true
                     end
+                elseif not good or not plain(info) or info ~= nil then
+                    readError = true
                 end
             end
+        else
+            readError = true
         end
     end
     table.sort(items, function(a,b)
         if a.name ~= b.name then return a.name < b.name end
         return a.link < b.link
     end)
-    return items
+    return items, readError and "Some bag items could not be read. Shift-click an item instead." or nil
 end
 
 -- Stage a small material bundle without touching the ledger. Repeated links

@@ -383,7 +383,7 @@ local function buildMain()
         UI.historyExpanded = not UI.historyExpanded; IOU.Refresh(); UI.detailScroll:SetVerticalScroll(0)
     end)
     UI.more = button(d, "More...", 100, 411, -325, function() IOU.ShowMore() end)
-    UI.share = button(d, "Share IOU", 124, 278, -325, function()
+    UI.share = button(d, "Send request", 124, 278, -325, function()
         local entry = L.Get(IOU.GetLedger(), UI.selected)
         if not entry or not IOU.Sharing then return end
         local link = type(IOU.Sharing.GetLink) == "function" and IOU.Sharing.GetLink(entry.id)
@@ -394,7 +394,7 @@ local function buildMain()
         end
         if type(IOU.Sharing.Share) ~= "function" then return end
         local offer, err = IOU.Sharing.Share(entry.id)
-        if not offer then IOU.Message(err or "Could not share this IOU.") end
+        if not offer then IOU.Message(err or "Could not send this request.") end
         IOU.Refresh()
     end)
     local menu = panel(d, 196, 170, 320, -151)
@@ -500,7 +500,7 @@ function IOU.Refresh(reset)
     local sharedLink = selected and sharing and type(sharing.GetLink) == "function" and sharing.GetLink(selected.id)
     UI.share:SetShown(sharing ~= nil and type(sharing.Share) == "function" and (shareable or sharedLink))
     UI.share:SetEnabled(shareable or sharedLink ~= nil and sharedLink ~= false)
-    UI.share:SetText(sharedLink and (sharedLink.state == "agreed" and "Shared" or "View request") or "Share IOU")
+    UI.share:SetText(sharedLink and (sharedLink.state == "agreed" and "Confirmed" or "View request") or "Send request")
     UI.historyToggle:SetEnabled(selected ~= nil)
     if not selected then
         UI.peer:SetText("Your IOUs")
@@ -762,7 +762,7 @@ local function layoutAdd(f)
     if f.shareToggle then
         f.shareToggle:ClearAllPoints(); f.shareToggle:SetPoint("TOPLEFT", 250, -y)
         f.shareToggle:SetShown(f.kind ~= "favor" and IOU.Sharing ~= nil and type(IOU.Sharing.Share) == "function")
-        f.shareToggle:SetText(f.shareWanted and "Share with player: on" or "Share with player: off")
+        f.shareToggle:SetText(f.shareWanted and "Ask to confirm: on" or "Ask to confirm: off")
     end
     f.moreOptions:ClearAllPoints(); f.moreOptions:SetPoint("TOPLEFT", 24, -y)
     f.moreOptions:SetText(f.optionsExpanded and "Fewer options" or "More options")
@@ -915,7 +915,7 @@ function IOU.ShowAdd(player)
             if not f.optionsExpanded then f.due:ClearFocus(); f.note:ClearFocus() end
             layoutAdd(f)
         end)
-        f.shareToggle = button(f, "Share with player: off", 226, 250, -285, function()
+        f.shareToggle = button(f, "Ask to confirm: off", 226, 250, -285, function()
             f.shareWanted = not f.shareWanted; layoutAdd(f)
         end)
         f.optionsGroup = CreateFrame("Frame", nil, f)
@@ -958,7 +958,7 @@ function IOU.ShowAdd(player)
             if f.shareWanted and f.kind ~= "favor" and IOU.Sharing and type(IOU.Sharing.Share) == "function" then
                 for _, item in ipairs(created) do
                     local offer, shareError = IOU.Sharing.Share(item.id)
-                    if not offer then IOU.Message("IOU saved. " .. (shareError or "Could not share this IOU.")); break end
+                    if not offer then IOU.Message("IOU saved. " .. (shareError or "Could not send this request.")); break end
                 end
             end
             UI.search:SetText("")
@@ -1088,7 +1088,7 @@ function IOU.ShowBackup(mode)
         local f = window("IOUBackupWindow", 736, 556)
         UI.backup = f
         font(f, 21, 22, -21, 660, "Personal ledger backups", GOLD)
-        f.shared = button(f, "Shared backups", 150, 364, -21, function() IOU.ShowSharedBackup() end)
+        f.shared = button(f, "Agreement backups", 150, 364, -21, function() IOU.ShowSharedBackup() end)
         button(f, "Before upgrade", 150, 528, -21, function()
             local previous = IOU.MigrationExport()
             if not previous then f.status:SetText("No older-format ledger was upgraded for this character."); return end
@@ -1143,7 +1143,7 @@ function IOU.ShowBackup(mode)
     else
         local text, err = IOU.Export()
         if not text then IOU.Message(err); return end
-        f.box:SetText(text); f.status:SetText("Personal IOUs and their history are included. Shared agreements are saved separately and are not part of this export.")
+        f.box:SetText(text); f.status:SetText("Your IOUs and history are included. Confirmed IOUs have a separate agreement backup.")
     end
     f.scroll:SetVerticalScroll(0); f:Show(); f.box:SetFocus(); f.box:HighlightText()
 end
@@ -1254,7 +1254,7 @@ function IOU.ShowSettings()
             IOU.ShowSettings()
         end) end
         button(f, "Reset window position", 260, 24, -349, function() IOU.ResetPosition() end)
-        button(f, "Shared agreements", 200, 24, -391, function()
+        button(f, "IOU requests", 200, 24, -391, function()
             f:Hide(); IOU.OpenSharedAttention()
         end)
         button(f, "Backups", 200, 242, -391, function()

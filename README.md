@@ -39,7 +39,7 @@ Automatic trade and mail matching can be disabled separately in **Options**. Man
 
 ## Share when it helps
 
-Use **Share with player** while creating a gold or item IOU, or select an existing IOU and click **Share IOU**. Both players need the current IOU version and Requests enabled. The recipient opens **Requests**, reviews the amount and direction, then accepts or declines. A new loan is never accepted automatically.
+Use **Ask to confirm** while creating a gold or item IOU, or select an existing IOU and click **Send request**. Both players need the current IOU version and Requests enabled. The recipient opens **Requests**, reviews the amount and direction, then accepts or declines. An accepted IOU is marked **Confirmed**. A new loan is never accepted automatically.
 
 Sharing runs in the background; routine use needs no repeated pairing, Listen test, or open windows. Accepted records link to the ordinary ledger, so the same linked debt is not shown twice in reminders. Observed repayments can synchronize through the existing acknowledgment exchange; unclear or conflicting events remain available for review. Local successful mail repayment and peer synchronization are separate facts.
 
@@ -64,13 +64,15 @@ The minimap button and an optional game keybinding also open IOU. Window positio
 
 Install through CurseForge, or extract the release ZIP's `IOU` folder into `_classic_beta_/Interface/AddOns/`. The final path is `AddOns/IOU/IOU.toc`. **Fully restart WoW after updating to 1.0.0**, which adds addon files. GitHub's automatic Source code archive needs its folder renamed to `IOU`.
 
+Updating from 1.0.0 to 1.0.1 only needs `/reload`; this patch adds no addon files.
+
 IOU stores character ledgers, Shared history, recent activity, links, and display preferences in `IOUDB`. Successful reload/logout saves these records; updating addon files keeps existing data. Personal `IOU2:` exports include personal records and payment history. Activity receipts and Shared consent records are separate; Shared recovery uses `IOUS1:`. Exports are optional and may contain private player names and notes.
 
 IOU targets Forever interface `16001`. Other WoW clients are unverified. It has no third-party addon library dependencies and is licensed under [MIT](LICENSE).
 
 ## Release readiness and development
 
-**1.0.0 implements the planned feature set. Live testing of changes from 0.7 onward is still pending.** Earlier live reports confirmed personal persistence, Shared messaging/payment exchanges, and tooltip/trade reminders; they do not establish the new trade/mail observers or 1.0 synchronization. The [short testing guide](docs/manual-testing.md) covers ordinary play without requiring screenshots or exports.
+**1.0.1 fixes issues found in the first live 1.0.0 pass.** One gold repayment and Undo worked; native item links and later trades exposed parser and close-order failures. The fixes still need live verification, and mail and the new confirmation flow remain unverified. Earlier reports confirmed personal persistence and tooltip/trade reminders. The [short testing guide](docs/manual-testing.md) starts with the three affected checks without requiring screenshots or exports.
 
 ```sh
 python -m pip install -r requirements-dev.txt

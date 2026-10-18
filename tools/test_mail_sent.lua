@@ -73,6 +73,8 @@ local function session(options)
         if s.recordFail then return nil,"failed" end
         return {id=value.id}
     end}
+    local parser=assert(loadstring(assert(IOU_SOURCES["shared_codec.lua"]),"@IOU/shared_codec.lua"))
+    setfenv(parser,env);parser("IOU",ns)
     local chunk=assert(loadstring(assert(IOU_SOURCES["mail_sent.lua"]),"@IOU/mail_sent.lua"))
     setfenv(chunk,env);chunk("IOU",ns)
     s.env,s.api,s.observer=env,ns,ns.MailSent
@@ -227,6 +229,15 @@ test("sent mail initialization is idempotent and unavailable hooks remain inert"
     for _,options in ipairs({{registrationError=true},{hookError=true}}) do
         local bad=session(options);equal(bad.observer.Initialize(),nil);bad:event("MAIL_SHOW");bad:send();bad:success();equal(#bad.calls,0)
     end
+end)
+
+test("sent mail records native named-color item links without rewriting evidence",function()
+    local s=session();local row=item(2589,2)
+    row.link="|cnIQ1:|Hitem:2589:0:0:0:0:0:0:0:13|h[Linen Cloth]|h|r"
+    s:ready();s.items[1]=row;s:compose(0);s:send();s:success()
+    equal(#s.calls,1);equal(s.calls[1].outgoing.items[1].link,row.link)
+    equal(s.calls[1].outgoing.items[1].quantity,2)
+    s:success();equal(#s.calls,1)
 end)
 
 return results

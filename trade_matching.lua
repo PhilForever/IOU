@@ -37,7 +37,11 @@ end
 -- display context without rewriting old receipt or accepted Shared identities.
 local function itemIdentity(value)
     if not text(value, 512) then return nil end
-    if value:sub(1, 2) == "|c" then
+    local namedColor=value:match("^|cn[A-Za-z_][A-Za-z0-9_]*:")
+    if namedColor then
+        if value:sub(-2)~="|r" then return nil end
+        value=value:sub(#namedColor+1,-3)
+    elseif value:sub(1, 2) == "|c" then
         if not value:sub(3, 10):match("^%x%x%x%x%x%x%x%x$") or value:sub(-2) ~= "|r" then return nil end
         value = value:sub(11, -3)
     end

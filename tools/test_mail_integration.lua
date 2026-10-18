@@ -166,4 +166,18 @@ test("mail integration outgoing reservation survives an independent incoming rec
     equal(list(S)[1].medium,"mail_sent");equal(list(S)[2].medium,"mail_received")
 end)
 
+test("mail integration native named-color materials repay through send and collection",function()
+    local native="|cnIQ1:|Hitem:2589:0:0:0:0:0:0:0:13|h[Linen Cloth]|h|r"
+    local m,api,S=session();local debt=add(api,"owe","item",5,native)
+    local row=item(2);row.link=native
+    m:compose(0,{row});m:send();m:event("MAIL_SEND_SUCCESS")
+    equal(balance(api,debt.id),3);equal(list(S)[1].outgoing.items[1].link,native)
+    local owed=add(api,"owed","item",5,native)
+    m.mails={mail({items={[1]=row}})};m:event("MAIL_INBOX_UPDATE")
+    m.env.TakeInboxItem(1,1);m.mails[1].items[1]=nil
+    m:event("MAIL_SUCCESS");m:event("MAIL_INBOX_UPDATE")
+    equal(balance(api,owed.id),3);equal(#list(S),2)
+    equal(list(S)[1].incoming.items[1].link,native)
+end)
+
 return results

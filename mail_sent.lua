@@ -51,12 +51,12 @@ local function contents()
             if type(name) ~= "string" or name == "" or #name > 200
                 or name:find("[%z\001-\031\127|]") or not integer(itemID, 2147483647) or itemID < 1
                 or not integer(quantity, MAX_ITEM) or quantity < 1
-                or type(link) ~= "string" or #link > 512 or link:find("[%z\001-\031\127]") then return nil end
-            local payload = link:match("^|c%x%x%x%x%x%x%x%x|Hitem:([^|]+)|h%[[^|]*%]|h|r$")
-                or link:match("^|Hitem:([^|]+)|h%[[^|]*%]|h$")
-            if not payload or not payload:match("^[%d:%-]+$") then return nil end
-            local linkedID = payload:match("^(%d+):") or payload:match("^(%d+)$")
-            if not linkedID or tonumber(linkedID) ~= itemID then return nil end
+                or type(link) ~= "string" or #link > 512 or link:find("[%z\001-\031\127]")
+                or not link:find("|Hitem:",1,true) then return nil end
+            local codec=IOU.SharedCodec
+            if not codec or type(codec.CanonicalItem)~="function" then return nil end
+            local key,linkedID=codec.CanonicalItem(link)
+            if not key or linkedID~=itemID then return nil end
             result.items[#result.items+1] = {itemID=itemID, link=link, name=name, quantity=quantity}
         else
             return nil

@@ -13,7 +13,7 @@ local function item(id, quantity)
 end
 local function session(options)
     options=options or {}
-    local s={now=100,peer="Birch Vale",outgoing=0,incoming=0,player={},target={},
+    local s={now=100,peer="Birch Vale",outgoing=0,incoming=0,player={},target={},tradeShown=true,
         calls={},frames={},counter=0,secret=setmetatable({}, {__tostring=function() error("secret stringify") end}),
         infoCalls={player={},target={}}}
     local ns={}
@@ -58,6 +58,7 @@ local function session(options)
         AcceptTrade=function() error("observer accepted a trade") end,
         CloseTrade=function() error("observer closed a trade") end,
         C_ChatInfo=setmetatable({}, {__index=function() error("observer accessed network") end})}, {__index=_G})
+    env.TradeFrame={IsShown=function() return s.tradeShown end}
     ns.PlayerContext={UnitName=function(unit) equal(unit,"NPC");return s.peer end}
     ns.PlayerSummary={NameKey=function(name)
         if rawequal(name,s.secret) or type(name)~="string" or name=="" then return nil end
@@ -75,7 +76,9 @@ local function session(options)
         if s.recordFail then return nil,"invalid" end
         return {id=value.id}
     end}
-    local chunk=assert(loadstring(assert(IOU_SOURCES["trade_observer.lua"]),"@IOU/trade_observer.lua"))
+    local chunk=assert(loadstring(assert(IOU_SOURCES["shared_codec.lua"]),"@IOU/shared_codec.lua"))
+    setfenv(chunk,env);chunk("IOU",ns)
+    chunk=assert(loadstring(assert(IOU_SOURCES["trade_observer.lua"]),"@IOU/trade_observer.lua"))
     setfenv(chunk,env);chunk("IOU",ns)
     s.api,s.env,s.observer=ns,env,ns.TradeObserver
     function s:event(event,...)
@@ -83,7 +86,7 @@ local function session(options)
             if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f,event,...) end
         end
     end
-    function s:show() self:event("TRADE_SHOW") end
+    function s:show() self.tradeShown=true;self:event("TRADE_SHOW") end
     function s:accept() self:event("TRADE_ACCEPT_UPDATE",1,1) end
     function s:success() self:event("UI_INFO_MESSAGE",42,"Localized completion text") end
     function s:ready() assert(self.observer.Initialize());self:show();self:accept() end
@@ -101,6 +104,15 @@ test("trade observer carries final links quantities and both native itemID posit
     equal(#s.calls,1);equal(s.calls[1].outgoing.items[1].itemID,2589)
     equal(s.calls[1].outgoing.items[1].quantity,12);equal(s.calls[1].outgoing.items[1].link,link(2589))
     equal(s.calls[1].incoming.items[1].itemID,2592);equal(s.calls[1].incoming.items[1].quantity,9)
+end)
+test("trade observer accepts Forever named-quality native hyperlinks without losing their payload",function()
+    local s=session();s.player[2]=item(2589,2);s.target[1]=item(2592,4)
+    s.player[2].link="|cnIQ1:|Hitem:2589::::::::13:::::::::|h[Linen Cloth]|h|r"
+    s.target[1].link="|cnIQ2:|Hitem:2592:0:0:0:0:-7:13|h[Wool Cloth]|h|r"
+    s:ready();s:success();equal(#s.calls,1)
+    equal(s.calls[1].outgoing.items[1].link,s.player[2].link)
+    equal(s.calls[1].incoming.items[1].link,s.target[1].link)
+    equal(s.calls[1].incoming.items[1].quantity,4)
 end)
 test("trade observer waits for completion after closing with cleared APIs",function()
     local s=session();s.incoming=50000;s.target[1]=item();s:ready();s:event("TRADE_CLOSED")
@@ -121,6 +133,42 @@ test("trade observer native teardown changes cannot rewrite a closed final snaps
     s:event("PLAYER_TRADE_MONEY");s:event("TRADE_MONEY_CHANGED");s:event("TRADE_PLAYER_ITEM_CHANGED",1)
     s:success();equal(#s.calls,1);equal(s.calls[1].outgoing.money,25000)
     equal(s.calls[1].outgoing.items[1].quantity,5)
+end)
+test("trade observer retains accepted gold when native OnHide clears money before observer close",function()
+    local s=session();s.outgoing=1000;s:ready()
+    s.tradeShown=false;s.outgoing=0;s.peer=nil
+    s:event("PLAYER_TRADE_MONEY");s:event("TRADE_MONEY_CHANGED")
+    s:event("TRADE_ACCEPT_UPDATE",0,0);s:event("TRADE_UPDATE");s:event("TRADE_CLOSED")
+    s:success();equal(#s.calls,1);equal(s.calls[1].outgoing.money,1000)
+    contains(s.observer.Report(),"native closing snapshots retained: 1")
+end)
+test("trade observer retains native item quantities through pre-close teardown and rapid later trades",function()
+    local s=session();assert(s.observer.Initialize())
+    for index=1,3 do
+        s.target[1]=item(2589,index==3 and 7 or 2)
+        s.target[1].link="|cnIQ1:|Hitem:2589::::::::13:::::::::|h[Linen Cloth]|h|r"
+        s:show();s:accept();s.tradeShown=false;s.target={};s.peer=nil
+        s:event("TRADE_TARGET_ITEM_CHANGED",1);s:event("TRADE_ACCEPT_UPDATE",0,0)
+        s:event("TRADE_CLOSED");s:success();s:success()
+        s.peer="Birch Vale";s.now=s.now+0.2
+    end
+    equal(#s.calls,3);equal(s.calls[1].incoming.items[1].quantity,2)
+    equal(s.calls[2].incoming.items[1].quantity,2);equal(s.calls[3].incoming.items[1].quantity,7)
+    equal(s.calls[3].id,"tr-3")
+end)
+test("trade observer hidden teardown still cannot turn cancellation or closure into completion",function()
+    for _,cancel in ipairs({false,true}) do
+        local s=session();s.incoming=1000;s:ready();s.tradeShown=false;s.incoming=0
+        s:event("PLAYER_TRADE_MONEY");s:event("TRADE_ACCEPT_UPDATE",0,0);s:event("TRADE_CLOSED")
+        if cancel then s:event("TRADE_REQUEST_CANCEL");s:success() end
+        equal(#s.calls,0)
+        if not cancel then s.now=s.now+5;s:success();equal(#s.calls,0) end
+    end
+end)
+test("trade observer hidden frame alone never captures an offer without both players accepting",function()
+    local s=session();assert(s.observer.Initialize());s.outgoing=1000;s:show()
+    s:event("TRADE_ACCEPT_UPDATE",1,0);s.tradeShown=false;s:event("PLAYER_TRADE_MONEY")
+    s:event("TRADE_CLOSED");s:success();equal(#s.calls,0)
 end)
 test("trade observer cancellation clears accepted and closed candidates",function()
     for _,closed in ipairs({false,true}) do
@@ -191,7 +239,9 @@ test("trade observer malformed item identity and missing cache never create part
         {name="Linen Cloth",quantity=1,itemID=2589,link=link(2592)},
         {name="Linen Cloth",quantity=0,itemID=2589,link=link(2589)},
         {name="Linen Cloth",quantity=0.5,itemID=2589,link=link(2589)},
-        {name="Bad|name",quantity=1,itemID=2589,link=link(2589)}}) do
+        {name="Bad|name",quantity=1,itemID=2589,link=link(2589)},
+        {name="Linen Cloth",quantity=1,itemID=2589,link="item:2589"},
+        {name="Linen Cloth",quantity=1,itemID=2589,link="|cnIQ1:|Hitem:2589|h[Linen Cloth]|h"}}) do
         local s=session();s.incoming=10000;s.target[1]=bad;s:ready();s:success();equal(#s.calls,0)
     end
 end)

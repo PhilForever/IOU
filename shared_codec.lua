@@ -92,7 +92,11 @@ function C.IsCorrection(value)
 end
 function C.CanonicalItem(value)
     if type(value)~="string" or #value>512 or value:find("[%z\001-\031\127]") then return nil end
-    if value:sub(1,2)=="|c" then
+    local namedColor=value:match("^|cn[A-Za-z_][A-Za-z0-9_]*:")
+    if namedColor then
+        if value:sub(-2)~="|r" then return nil end
+        value=value:sub(#namedColor+1,-3)
+    elseif value:sub(1,2)=="|c" then
         if not value:sub(3,10):match("^%x%x%x%x%x%x%x%x$") or value:sub(-2)~="|r" then return nil end
         value=value:sub(11,-3)
     end

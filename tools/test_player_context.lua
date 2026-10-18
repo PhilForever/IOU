@@ -163,7 +163,7 @@ test("context tooltips separate both directions and personal versus shared amoun
     local s=session();s:add();s:add("owe","money",5000)
     s:shared("owed",6000,"a");s:shared("owe",2500,"b")
     s.context.Initialize();local text=s:tooltip()
-    contains(text,"IOU - Your notes");contains(text,"IOU - Shared")
+    contains(text,"IOU - Your notes");contains(text,"IOU - Confirmed")
     contains(text,"Owes you 1g");contains(text,"You owe 50s")
     contains(text,"Owes you 60s");contains(text,"You owe 25s")
     assert(not text:find("1g 60s",1,true),"independent sources were summed")

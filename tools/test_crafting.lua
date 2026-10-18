@@ -9,6 +9,8 @@ local function equal(a,b) assert(a == b, "expected " .. tostring(b) .. ", got " 
 local cloth = "|cffffffff|Hitem:2589:0:0:0:0:0:0:0|h[Linen Cloth]|h|r"
 local wool = "|cffffffff|Hitem:2592:0:0:0:0:0:0:0|h[Wool Cloth]|h|r"
 local variant = "|cffffffff|Hitem:2589:0:0:0:0:0:1:0|h[Linen Cloth]|h|r"
+local nativeCloth = "|cnIQ1:|Hitem:2589::::::::13:257:::::::::|h[Linen Cloth]|h|r"
+local nativeWool = "|cnIQ1:|Hitem:2592::::::::13:257:::::::::|h[Wool Cloth]|h|r"
 local function session()
     local state = support.Session({ui=true,target="Birch Vale"})
     local api = state.api
@@ -42,6 +44,32 @@ test("bag picker groups identical native materials without merging variants", fu
     equal(c.BagItems()[1].quantity,20)
 end)
 
+test("Forever named item quality links populate bags and preserve exact item identity", function()
+    local state, api, c = session()
+    bags(state,{[0]={material(nativeCloth,2589,5)},
+        [1]={material(nativeCloth,2589,8),material(nativeWool,2592,7)}})
+    local rows, err = c.BagItems(); equal(#rows,2); equal(err,nil)
+    equal(rows[1].link,nativeCloth); equal(rows[1].label,nativeCloth)
+    equal(rows[1].name,"[Linen Cloth]"); equal(rows[1].itemID,2589); equal(rows[1].quantity,13)
+    equal(rows[2].link,nativeWool); equal(rows[2].quantity,7)
+    api.ShowAdd(); state.click(api.UI.add.kindButtons.item); state.click(api.UI.add.fromBags)
+    local picker = api.UI.bagPicker
+    equal(picker.rows[1].item.link,nativeCloth)
+    picker.search:SetText("Linen"); equal(picker.rows[1].item.quantity,13)
+    state.click(picker.rows[1]); equal(api.UI.add.label:GetText(),nativeCloth)
+    equal(api.UI.add.quantity:GetText(),"13")
+end)
+
+test("bag grouping and material bundles ignore display color while retaining item payloads", function()
+    local state, _, c = session()
+    local literal = nativeCloth:gsub("|cnIQ1:","|cffffffff")
+    bags(state,{[0]={material(nativeCloth,2589,5),material(literal,2589,7)}})
+    local rows, err = c.BagItems(); equal(#rows,1); equal(err,nil); equal(rows[1].quantity,12)
+    local bundle = assert(c.Stage({},nativeCloth,5))
+    bundle = assert(c.Stage(bundle,literal,7)); equal(#bundle,1); equal(bundle[1].amount,12)
+    equal(bundle[1].label,nativeCloth)
+end)
+
 test("bag reads skip malformed inaccessible secret and mismatched native data", function()
     local state, _, c = session()
     local secret = {}
@@ -50,9 +78,21 @@ test("bag reads skip malformed inaccessible secret and mismatched native data", 
         material(cloth,2589,secret), secret, material(cloth,2589,5)}})
     local rows = c.BagItems(); equal(#rows,1); equal(rows[1].quantity,5)
     state.env.C_Container.GetContainerItemInfo=function() error("unavailable") end
-    equal(#c.BagItems(),0)
+    local unreadable, readError = c.BagItems()
+    equal(#unreadable,0); assert(readError:find("could not be read",1,true))
     state.env.C_Container=nil
     local rows, err = c.BagItems(); equal(#rows,0); assert(err:find("Shift-click",1,true))
+end)
+
+test("empty bags remain distinct from failed or unsupported native bag reads", function()
+    local state, api, c = session()
+    bags(state,{[0]={}})
+    local rows, err = c.BagItems(); equal(#rows,0); equal(err,nil)
+    state.env.C_Container.GetContainerNumSlots=function() error("unavailable") end
+    rows, err = c.BagItems(); equal(#rows,0); assert(err:find("could not be read",1,true))
+    bags(state,{[0]={material("not a native link",2589,5)}})
+    api.ShowAdd(); state.click(api.UI.add.kindButtons.item); state.click(api.UI.add.fromBags)
+    assert(api.UI.bagPicker.empty:GetText():find("could not be read",1,true))
 end)
 
 test("stack entry reads native capacity rather than bag count and keeps integer units", function()
@@ -73,6 +113,19 @@ test("stack cache failure and secret capacity fall back to units without guessin
     assert(not c.StackSize(cloth))
     state.env.C_Item.GetItemInfo=function() error("uncached") end
     assert(not c.Quantity(cloth,1,true)); equal(c.Quantity(cloth,1,false),1)
+end)
+
+test("native item cache stack count is the eighth return for named quality links", function()
+    local state, _, c = session()
+    local queried
+    state.env.C_Item.GetItemInfo=function(link)
+        queried=link
+        return "Linen Cloth",nativeCloth,1,5,0,"Trade Goods","Cloth",20,"",2589,13,7,0,1,0,nil,true,""
+    end
+    equal(c.StackSize(nativeCloth),20); equal(queried,nativeCloth)
+    equal(c.Quantity(nativeCloth,2,true),40)
+    state.env.C_Item.GetItemInfo=function() return "Linen Cloth",nativeCloth,1,5,0,"Trade Goods","Cloth",nil,"",2589 end
+    assert(not c.StackSize(nativeCloth)); equal(c.Quantity(nativeCloth,2,false),2)
 end)
 
 test("material bundles combine equal identities and preserve caller data", function()
@@ -156,7 +209,7 @@ test("ordinary ledger shares the selected row and opens an existing request", fu
     api.Sharing.GetLink=function(id) if id==e.id then return {offerId="o1",state="agreed"} end end
     api.ShowShared=function(peer,tab) opened={peer,tab} end
     api.SelectSharedOffer=function(id) selected=id end
-    api.Refresh(); equal(api.UI.share:GetText(),"Shared")
+    api.Refresh(); equal(api.UI.share:GetText(),"Confirmed")
     state.click(api.UI.share); equal(opened[1],"Birch Vale"); equal(opened[2],nil); equal(selected,"o1")
     api.Sharing.GetLink=function() return {offerId="pending-2",state="pending"} end
     api.Refresh(); equal(api.UI.share:GetText(),"View request")

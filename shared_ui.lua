@@ -5,7 +5,7 @@ local font, panel, button, edit, scroll, window, literal = H.font, H.panel, H.bu
 local GOLD, MUTED = {0.88, 0.73, 0.42}, {0.65, 0.66, 0.63}
 local stateNames = {OFFER_OPEN="Sent", OFFER_RECEIVED="Needs review",
     ACCEPT_PENDING="Accepting", DECLINE_PENDING="Declining",
-    COMMITTED="Agreed", DECLINED="Declined", WITHDRAWN="Withdrawn", PAUSED="Interrupted"}
+    COMMITTED="Confirmed", DECLINED="Declined", WITHDRAWN="Withdrawn", PAUSED="Interrupted"}
 local refresh
 local attention={count=0,recovery=false}
 function IOU.GetSharedAttention()
@@ -266,7 +266,7 @@ function IOU.ShowSharedProposal()
     if not UI.sharedForm then
         local f = window("IOUSharedProposalWindow", 624, 400)
         UI.sharedForm = f
-        font(f, 21, 22, -22, 560, "Share an IOU", GOLD)
+        font(f, 21, 22, -22, 560, "Request an IOU", GOLD)
         font(f, 11, 24, -63, 560, "Other player's full name", MUTED)
         f.peer = edit(f, 556, 28, -84, 96)
         f.kindButtons={}
@@ -359,8 +359,8 @@ function IOU.ShowSharedProposal()
 end
 
 local viewCaptions={inbox="Requests",agreements="Active",waiting="Sent",history="History",all="All requests"}
-local emptyMessages={inbox="Nothing needs your review.",agreements="No active shared agreements.",
-    waiting="No sent requests awaiting a reply.",history="No completed or locally reviewed offers.",all="No shared offers yet."}
+local emptyMessages={inbox="Nothing needs your review.",agreements="No active confirmed IOUs.",
+    waiting="No sent requests awaiting a reply.",history="No completed or locally reviewed requests.",all="No IOU requests yet."}
 refresh = function(overview, problem)
     local f = UI.shared
     if not f then return end
@@ -442,7 +442,7 @@ refresh = function(overview, problem)
     if f.detailId ~= f.selected or f.detailSource ~= f.overview or err then
         if f.detailId ~= f.selected then f.scroll:SetVerticalScroll(0) end
         f.details:SetText(literal(selected and (f.showDetails and fullReviewText(selected,f.overview) or compactText(selected,f.overview)) or err
-            or (coordinator() and "Share an IOU or accept a request here." or "Choose a player, connect, then send an IOU request.")))
+            or (coordinator() and "Send an IOU request or accept one here." or "Choose a player, connect, then send an IOU request.")))
         f.content:SetHeight(math.max(292, f.details:GetStringHeight()+16))
         f.detailId,f.detailSource=f.selected,f.overview
     end
@@ -524,13 +524,13 @@ function IOU.ShowShared(peer,view)
         local f = window("IOUSharedWindow", 960, 650)
         UI.shared = f
         f.page=1
-        font(f, 24, 22, -22, 650, "Requests", GOLD)
+        font(f, 24, 22, -22, 650, "IOU requests", GOLD)
         f.detailToggle=button(f,"Details",116,794,-24,function()
             f.showDetails=not f.showDetails
             f.detailToggle:SetText(f.showDetails and "Hide details" or "Details")
             f.detailSource=nil; f.scroll:SetVerticalScroll(0); refresh()
         end)
-        font(f, 12, 24, -62, 896, "Shared IOUs and payment requests. Accept or decline; close this window whenever you like.", MUTED)
+        font(f, 12, 24, -62, 896, "Ask a player to confirm an IOU. Accept or decline requests here.", MUTED)
         f.connectionPanel=panel(f,912,126,24,-76)
         f.connectionPanel:SetFrameLevel(f:GetFrameLevel()+18); f.connectionPanel:EnableMouse(true)
         f.connectionPanel:SetShown(not coordinator())
@@ -559,14 +559,14 @@ function IOU.ShowShared(peer,view)
             end)
             x=x+width+8
         end
-        f.propose = button(f, "+ Share IOU", 270, 24, -154, IOU.ShowSharedProposal)
+        f.propose = button(f, "+ New request", 270, 24, -154, IOU.ShowSharedProposal)
         font(f,10,334,-142,100,"Search",MUTED)
         f.search=edit(f,492,398,-154,200)
         f.search:SetScript("OnTextChanged",function()
             f.filterInitialized=true; f.page=1; f.selected=nil; refresh()
         end)
         f.clearSearch=button(f,"X",26,904,-154,function() f.search:SetText("") end)
-        font(f, 11, 24, -194, 270, "Shared IOUs", MUTED)
+        font(f, 11, 24, -194, 270, "Confirmed IOUs and requests", MUTED)
         f.listEmpty=font(f,12,34,-236,250,"",MUTED); f.listEmpty:SetHeight(150)
         f.rows={}
         for index=1,5 do

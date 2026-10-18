@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 — 2026-10-18
+
+- Fixed native named item-quality colors (`|cnIQ1:`) being rejected by item matching, bag selection, trade snapshots, and outgoing mail snapshots. Existing item labels and saved identity keys remain intact.
+- Removed color-token fragments from player tooltips and trade reminders.
+- Preserved the accepted trade contents when the native window clears money and acceptance during its close handler, before IOU receives the close event. A typed completion event is still required; cancellations and duplicate notifications remain excluded.
+- Replaced vague Shared labels with Send request, Ask to confirm, Confirmed, and IOU requests. Unreadable bag contents now show an explanation instead of falsely appearing empty.
+
+Validation: native-link and close-order regressions include gold payment → Undo → two cloth repayments → unrelated items → another gold payment, plus native item mail handling and the existing suites. The first live 1.0.0 pass confirmed one gold payment and Undo, and exposed the item and later-trade failures; the fixes, mail, and confirmation flow still need live verification. Earlier missed trades cannot be reconstructed and are not invented. Existing records and formats are preserved. Use `/reload` after updating from 1.0.0.
+
 ## 1.0.0 — 2026-10-17
 
 - Integrated optional sharing into ordinary gold and item IOUs. New loans require recipient acceptance; accepted records link to the personal ledger and reminders avoid counting a linked copy twice. Existing Shared records remain available, with deliberate Add to ledger for older confirmed records.
